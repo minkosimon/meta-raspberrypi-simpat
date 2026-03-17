@@ -1,0 +1,7 @@
+# short-description: Create Raspberry Pi boot SD card for bundled initramfs
+# long-description: Creates a boot-only SD card image that carries a bundled
+# kernel+initramfs artifact in the VFAT partition.
+
+part /boot --source bootimg-partition --ondisk ${SIMPAT_WIC_DISK_DEV} --fstype=vfat --label ${SIMPAT_WIC_BOOT_PARTITION_LABEL} --active --align ${SIMPAT_WIC_PARTITION_ALIGN} --size ${SIMPAT_WIC_BOOT_PARTITION_SIZE}
+
+bootloader --ptable msdos
