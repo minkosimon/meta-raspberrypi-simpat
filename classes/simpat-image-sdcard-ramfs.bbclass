@@ -7,6 +7,7 @@ WKS_FILE ?= "sdcard-ramfs.wks.in"
 
 SIMPAT_INITRAMFS_IMAGE ?= ""
 INITRAMFS_IMAGE ?= "${SIMPAT_INITRAMFS_IMAGE}"
+INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 INITRAMFS_IMAGE_BUNDLE ?= "1"
 
 # The kernel boots directly from the bundled initramfs, so no persistent rootfs
