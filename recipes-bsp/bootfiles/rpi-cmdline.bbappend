@@ -40,6 +40,7 @@ def setup_boot_over_ethernet(d):
         return nfs_root
     
     # Retourner la config par défaut (SD card boot)
+    bb.note("cmdline : SDCARD boot mode")
     return "root=/dev/mmcblk0p2 rootfstype=ext4 rootwait"
     
 CMDLINE_ROOTFS = "${@setup_boot_over_ethernet(d)}"
