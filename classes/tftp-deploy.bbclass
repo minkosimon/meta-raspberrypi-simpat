@@ -4,7 +4,8 @@
 #   - If rootfs image exists: Deploy to NFS folder
 #   - Otherwise: Deploy boot files only to TFTP
 # 
-# Uses IMAGE_BOOT_FILES to get all required boot files automatically
+# Automatically handles U-Boot if "uboot" is in DISTRO_FEATURES.
+# Uses IMAGE_BOOT_FILES to get all required boot files automatically.
 
 inherit deploy
 
@@ -25,6 +26,8 @@ python do_tftp_deploy() {
     image_name = d.getVar('IMAGE_BASENAME')
     initramfs_image = d.getVar('INITRAMFS_IMAGE')
     deploy_dir = d.getVar('DEPLOY_DIR_IMAGE')
+    distro_features = d.getVar('DISTRO_FEATURES') or ""
+    has_uboot = "uboot" in distro_features.split()
     
     # Ensure TFTP folder exists
     if not tftp_folder:
@@ -33,6 +36,7 @@ python do_tftp_deploy() {
     
     os.makedirs(tftp_folder, exist_ok=True)
     bb.note(f"TFTP boot folder: {tftp_folder}")
+    bb.note(f"Bootloader: {'U-Boot' if has_uboot else 'EEPROM'}")
     
     # Auto-detect deployment type
     is_ramfs = initramfs_image and len(initramfs_image.strip()) > 0
@@ -78,6 +82,19 @@ python do_tftp_deploy() {
             bb.error(f"Error deploying boot files: {e}")
             return
     
+    # Deploy U-Boot bootloader if present
+    if has_uboot and deploy_dir and os.path.exists(deploy_dir):
+        try:
+            uboot_files = ['u-boot-rpi5.bin', 'u-boot.bin', 'boot.scr']
+            for uboot_file in uboot_files:
+                src_path = os.path.join(deploy_dir, uboot_file)
+                if os.path.exists(src_path):
+                    dst_path = os.path.join(tftp_folder, uboot_file)
+                    shutil.copy2(src_path, dst_path)
+                    bb.note(f"Deployed U-Boot file: {uboot_file}")
+        except Exception as e:
+            bb.warn(f"Warning deploying U-Boot files: {e}")
+    
     # Deploy rootfs based on image type
     if is_ramfs:
         bb.note("RAMFS deployment - kernel is bundled with initramfs")
@@ -114,8 +131,6 @@ python do_tftp_deploy() {
             bb.debug("NFS rootfs deployment skipped (FOLDER_NFS_SERVER or DEPLOY_DIR not set)")
     
     bb.note("=== TFTP Deploy Task Completed ===")
-}
-
 
 # Always run this task (no stamp file)
 do_tftp_deploy[nostamp] = "1"

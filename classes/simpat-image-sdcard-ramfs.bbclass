@@ -1,25 +1,26 @@
 # Build a Raspberry Pi SD card image that boots from a bundled initramfs.
 # The SD card only contains the firmware, DTBs and the bundled kernel image.
+# Bootloader (U-Boot or EEPROM) is selected automatically via DISTRO_FEATURES.
 
 inherit simpat-image-sdcard
 
+# Configure for RAMFS boot
+SIMPAT_ROOTFS_TYPE = "ramfs"
 WKS_FILE ?= "sdcard-ramfs.wks.in"
 
+# Initramfs configuration
 SIMPAT_INITRAMFS_IMAGE ?= ""
 INITRAMFS_IMAGE ?= "${SIMPAT_INITRAMFS_IMAGE}"
 INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 INITRAMFS_IMAGE_BUNDLE ?= "1"
 
-# The kernel boots directly from the bundled initramfs, so no persistent rootfs
-# command line must be injected in cmdline.txt.
+# No persistent rootfs on cmdline for ramfs boot
 CMDLINE_ROOTFS = ""
 
-# A bundled kernel+initramfs is larger than a plain kernel image.
+# Bundled kernel+initramfs is larger than plain kernel
 SIMPAT_WIC_BOOT_PARTITION_SIZE ?= "128"
 
-# meta-raspberrypi's default IMAGE_BOOT_FILES points to the plain kernel image.
-# For the ramfs case we want the bundled kernel artifact to be copied into the
-# boot partition instead.
+# Use bundled kernel artifact for boot
 IMAGE_BOOT_FILES = "${BOOTFILES_DIR_NAME}/* \
                  ${@make_dtb_boot_files(d)} \
                  ${@bb.utils.contains('RPI_USE_U_BOOT', '1', \
