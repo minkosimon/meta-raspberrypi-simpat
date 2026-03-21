@@ -3,13 +3,15 @@ LICENSE = "MIT"
 
 require recipes-core/images/core-image-minimal.bb
 
-inherit simpat-image-sdcard-nfs
+inherit image-support support-img-type
 
-# Enable Yocto image to boot from NFS
-BOOT_ROOTFS_OVER_NFS = "1"
+# Configure for sdcard boot with rootfs in RAM
+SUPPORT_BOOT := "sdcard"
+SUPPORT_IMG_TYPE = "nfs"
 
-# Set the IP address of the NFS server
+# NFS server configuration
 IP_SERVER_NFS ?= "192.168.1.100"
+FOLDER_NFS_SERVER ?= "/tmp/nfs/rootfs"
 
-# Set the folder on the NFS server where the root filesystem is located
-FOLDER_NFS_SERVER ?= "/nfs/rootfs"
+# Keep a rootfs archive artifact that can be exported over NFS
+IMAGE_FSTYPES:append = " tar.gz"

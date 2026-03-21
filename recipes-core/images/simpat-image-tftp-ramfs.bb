@@ -2,10 +2,17 @@ SUMMARY = "SIMPAT Raspberry Pi TFTP boot image with RAMFS rootfs"
 DESCRIPTION = "TFTP netboot image with initramfs loaded entirely in RAM"
 LICENSE = "MIT"
 
+# Image format for network deployment
+IMAGE_FSTYPES = "cpio.gz"
+
+SUPPORT_BOOT := "tftp"
+SUPPORT_IMG_TYPE := "ramfs"
+
+
 require recipes-core/images/core-image-minimal.bb
 
-# Enable TFTP boot file deployment (auto-detects RAMFS via INITRAMFS_IMAGE)
-inherit tftp-deploy
+# TFTP deployment with RAMFS (rootfs loaded in RAM)
+inherit image-support
 
 TFTP_BOOT_FOLDER ?= "/tmp/srv/tftp"
 
@@ -27,7 +34,6 @@ IMAGE_INSTALL:append = " \
     sed \
     findutils \
     udev \
-    dhcp \
     openssh \
     openssh-sftp-server \
 "
