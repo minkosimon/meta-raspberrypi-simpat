@@ -1,0 +1,14 @@
+# short-description: Create Raspberry Pi SD card image with U-Boot bootloader
+# long-description: Creates a partitioned SD card image with U-Boot bootloader,
+# boot files, and root filesystem.
+
+# Bootloader partition (U-Boot and firmware)
+part --source rawcopy --sourceparams="file=${DEPLOY_DIR_IMAGE}/u-boot-rpi5.bin" --ondisk ${SIMPAT_WIC_DISK_DEV} --align ${SIMPAT_WIC_PARTITION_ALIGN} --size 8
+
+# Boot partition (kernel and device tree)
+part /boot --source bootimg-partition --ondisk ${SIMPAT_WIC_DISK_DEV} --fstype=vfat --label ${SIMPAT_WIC_BOOT_PARTITION_LABEL} --align ${SIMPAT_WIC_PARTITION_ALIGN} --size ${SIMPAT_WIC_BOOT_PARTITION_SIZE}
+
+# Root filesystem partition
+part / --source rootfs --ondisk ${SIMPAT_WIC_DISK_DEV} --fstype=${SIMPAT_WIC_ROOTFS_PARTITION_FSTYPE} --label ${SIMPAT_WIC_ROOTFS_PARTITION_LABEL} --align ${SIMPAT_WIC_PARTITION_ALIGN} --use-uuid
+
+bootloader --ptable msdos
