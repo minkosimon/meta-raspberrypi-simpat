@@ -9,6 +9,17 @@ SUPPORT_IMG_TYPE := "ramfs"
 
 inherit image-support support-img-type
 
+# set WKS 
+WKS_FILE = "sdcard-ramfs.wks.in"
 
 # Initramfs configuration
 INITRAMFS_IMAGE ?= "core-image-minimal-initramfs"
+
+# Generate both separate initramfs and bundled kernel
+IMAGE_FSTYPES = "cpio.gz"
+
+# Bundle initramfs into kernel for simpler deployment
+INITRAMFS_IMAGE = "core-image-minimal-initramfs"
+INITRAMFS_IMAGE_BUNDLE = "1"
+SUPPORT_WIC_BOOT_PARTITION_SIZE = "128"
+

@@ -21,6 +21,9 @@ TFTP_BOOT_FOLDER ?= "/tmp/srv/tftp"
 INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 KERNEL_IMAGETYPE = "Image"
 
+INITRAMFS_IMAGE_BUNDLE = "1"
+SUPPORT_WIC_BOOT_PARTITION_SIZE = "128"
+
 # Generate both separate initramfs and bundled kernel
 IMAGE_FSTYPES = "cpio.gz"
 

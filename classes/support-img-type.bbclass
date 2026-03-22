@@ -36,13 +36,25 @@ SUPPORT_IMG_ROOTFS_FSTYPE ?= "ext4"
 IMAGE_FSTYPES:append = " tar.gz"
 
 # ============================================================================
-# Type-specific Kernel and Initramfs Configuration
+# Type-specific Configuration (consolidated)
 # ============================================================================
+# Unified configuration for all image types (rootfs, ramfs, nfs)
+# Handles RAMFS bundling, NFS configuration, WKS file selection, and cmdline
 
-# For RAMFS type: configure initramfs
-python do_set_ramfs_config() {
+python __anonymous() {
+    import os
+    
     img_type = d.getVar('SUPPORT_IMG_TYPE')
-    if img_type == "ramfs":
+    layerdir = d.getVar('LAYERDIR')
+    
+    # ===== ROOTFS Configuration =====
+    if img_type == "rootfs":
+        bb.plain("[type img] : update ROOTFS image type")
+        wks_filename = "sdcard-rootfs.wks.in"
+        d.setVar('CMDLINE_ROOTFS', '/dev/mmcblk0p2 rw rootwait')
+    
+    # ===== RAMFS Configuration =====
+    elif img_type == "ramfs":
         bb.plain("[type img] : RAMFS image type")
         
         # Set default initramfs image if not already set
@@ -53,41 +65,18 @@ python do_set_ramfs_config() {
         
         # Bundle kernel with initramfs
         d.setVar('INITRAMFS_IMAGE_BUNDLE', '1')
+        bb.debug(1, "INITRAMFS_IMAGE_BUNDLE enabled for bundled kernel")
         
         # Bundled kernel+initramfs is larger than plain kernel
         d.setVar('SUPPORT_WIC_BOOT_PARTITION_SIZE', '128')
         
         # No persistent rootfs on cmdline for ramfs boot
         d.setVar('CMDLINE_ROOTFS', '')
-        bb.plain("RAMFS configuration complete")
-}
-
-# Run this task early to set variables
-addtask do_set_ramfs_config before do_rootfs
-
-# ============================================================================
-# Type-specific WKS File and Boot Configuration
-# ============================================================================
-
-# Map image types to WKS files and configurations
-python __anonymous() {
-    import os
-    
-    img_type = d.getVar('SUPPORT_IMG_TYPE')
-    layerdir = d.getVar('LAYERDIR')
-    
-    # Determine WKS filename based on image type
-    wks_filename = None
-    if img_type == "rootfs":
-        bb.plain("[type img] : update ROOTFS image type")
-        wks_filename = "sdcard-rootfs.wks.in"
-        d.setVar('CMDLINE_ROOTFS', '/dev/mmcblk0p2 rw rootwait')
+        bb.plain("[type img] : RAMFS configuration complete")
         
-    elif img_type == "ramfs":
-        bb.plain("[type img] : update RAMFS image type")
         wks_filename = "sdcard-ramfs.wks.in"
-        d.setVar('CMDLINE_ROOTFS', '')
-        
+    
+    # ===== NFS Configuration =====
     elif img_type == "nfs":
         bb.plain("[type img] : update NFS image type")
         wks_filename = "sdcard-nfs.wks.in"
@@ -97,10 +86,11 @@ python __anonymous() {
         folder_nfs = d.getVar('FOLDER_NFS_SERVER') or "/srv/nfsroot"
         d.setVar('CMDLINE_ROOTFS', f'/dev/nfs nfsroot={ip_server}:{folder_nfs} rw')
         bb.plain(f"[type img] : NFS server: {ip_server}, folder: {folder_nfs}")
+    
     else:
         bb.fatal(f"Unknown SUPPORT_IMG_TYPE: {img_type}")
     
-    # Set WKS_FILE with fully qualified path
+    # ===== Common: Set WKS_FILE with fully qualified path =====
     if wks_filename and layerdir:
         wks_path = os.path.join(layerdir, "wic", wks_filename)
         if os.path.exists(wks_path):

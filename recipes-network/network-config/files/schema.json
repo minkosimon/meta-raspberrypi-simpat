@@ -1,0 +1,236 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Network Configuration Schema",
+  "description": "Schema for systemd-networkd configuration generation",
+  "type": "object",
+  "required": ["interfaces"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version for tracking",
+      "default": "1.0"
+    },
+    "hostname": {
+      "type": "string",
+      "description": "System hostname"
+    },
+    "interfaces": {
+      "type": "array",
+      "description": "List of network interfaces",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/interface"
+      }
+    },
+    "global": {
+      "type": "object",
+      "description": "Global network settings",
+      "properties": {
+        "dns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "DNS servers"
+        },
+        "ntp": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "NTP servers"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "interface": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9\\-_\\.]+$",
+          "description": "Interface name (e.g., eth0, vlan10, br0)"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["ethernet", "vlan", "bridge", "bond", "loopback"],
+          "default": "ethernet",
+          "description": "Interface type"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable interface"
+        },
+        "mtu": {
+          "type": "integer",
+          "minimum": 68,
+          "maximum": 65535,
+          "default": 1500,
+          "description": "Maximum Transmission Unit"
+        },
+        "description": {
+          "type": "string",
+          "description": "Interface description"
+        },
+        "dhcp4": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable DHCPv4"
+        },
+        "dhcp6": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable DHCPv6"
+        },
+        "ipv4": {
+          "type": "array",
+          "description": "Static IPv4 addresses (CIDR notation)",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/\\d{1,2}$"
+          }
+        },
+        "ipv6": {
+          "type": "array",
+          "description": "Static IPv6 addresses (CIDR notation)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gateway4": {
+          "type": "string",
+          "description": "Default gateway (IPv4)"
+        },
+        "gateway6": {
+          "type": "string",
+          "description": "Default gateway (IPv6)"
+        },
+        "routes": {
+          "type": "array",
+          "description": "Additional routes",
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "dns": {
+          "type": "array",
+          "description": "DNS servers for this interface",
+          "items": {"type": "string"}
+        },
+        "dns_search": {
+          "type": "array",
+          "description": "DNS search domains",
+          "items": {"type": "string"}
+        },
+        "ntp": {
+          "type": "array",
+          "description": "NTP servers for this interface",
+          "items": {"type": "string"}
+        },
+        "link_local": {
+          "type": "string",
+          "enum": ["yes", "no", "ipv4", "ipv6"],
+          "description": "Link-local address configuration"
+        },
+        "multicast": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable multicast"
+        },
+        "promiscuous": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable promiscuous mode"
+        },
+        "arp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable ARP"
+        },
+        "id": {
+          "type": "integer",
+          "description": "VLAN ID (for kind=vlan)"
+        },
+        "link": {
+          "type": "string",
+          "description": "Parent interface (for kind=vlan)"
+        },
+        "members": {
+          "type": "array",
+          "description": "Bridge/Bond member interfaces",
+          "items": {"type": "string"}
+        },
+        "interfaces": {
+          "type": "array",
+          "description": "Bridge/Bond member interfaces (alternative to members)",
+          "items": {"type": "string"}
+        },
+        "stp": {
+          "type": "boolean",
+          "default": false,
+          "description": "Spanning Tree Protocol (for bridges)"
+        },
+        "forward_delay": {
+          "type": "integer",
+          "description": "Bridge forward delay"
+        },
+        "hello_time": {
+          "type": "integer",
+          "description": "Bridge hello time"
+        },
+        "max_age": {
+          "type": "integer",
+          "description": "Bridge max age"
+        },
+        "cost": {
+          "type": "object",
+          "description": "Bridge port costs",
+          "additionalProperties": {"type": "integer"}
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["balance-rr", "active-backup", "balance-xor", "broadcast", "802.3ad", "balance-tlb", "balance-alb"],
+          "default": "balance-alb",
+          "description": "Bond mode"
+        },
+        "miimon": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "description": "Bond MII monitoring interval (ms)"
+        },
+        "downdelay": {
+          "type": "integer",
+          "default": 0,
+          "description": "Bond down delay (ms)"
+        },
+        "updelay": {
+          "type": "integer",
+          "default": 0,
+          "description": "Bond up delay (ms)"
+        },
+        "primary": {
+          "type": "string",
+          "description": "Primary bond interface (active-backup mode)"
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "required": ["destination"],
+      "properties": {
+        "destination": {
+          "type": "string",
+          "description": "Route destination (CIDR notation)"
+        },
+        "gateway": {
+          "type": "string",
+          "description": "Route gateway"
+        },
+        "metric": {
+          "type": "integer",
+          "description": "Route metric"
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,9 @@ inherit image-support support-img-type
 # Configure for standard SD card boot with local rootfs
 SUPPORT_IMG_TYPE = "rootfs"
 
+# set WKS 
+WKS_FILE = "sdcard-rootfs.wks.in"
+
 # Configure for TFTP boot with rootfs in RAM
 SUPPORT_BOOT := "sdcard"
 SUPPORT_IMG_TYPE := "rootfs"

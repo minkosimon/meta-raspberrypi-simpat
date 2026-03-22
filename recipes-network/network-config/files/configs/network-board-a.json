@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "hostname": "board-a",
+  "interfaces": [
+    {
+      "name": "eth0",
+      "kind": "ethernet",
+      "description": "Primary Ethernet (DHCP)",
+      "dhcp4": true,
+      "mtu": 1500,
+      "multicast": true,
+      "arp": true
+    }
+  ]
+}

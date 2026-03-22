@@ -13,5 +13,8 @@ SUPPORT_IMG_TYPE = "nfs"
 IP_SERVER_NFS ?= "192.168.1.100"
 FOLDER_NFS_SERVER ?= "/tmp/nfs/rootfs"
 
+# set WKS 
+WKS_FILE = "sdcard-nfs.wks.in"
+
 # Keep a rootfs archive artifact that can be exported over NFS
 IMAGE_FSTYPES:append = " tar.gz"
