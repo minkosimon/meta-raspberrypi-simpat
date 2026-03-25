@@ -7,7 +7,7 @@ require recipes-core/images/core-image-minimal.bb
 SUPPORT_BOOT := "sdcard"
 SUPPORT_IMG_TYPE := "ramfs"
 
-inherit image-support support-img-type
+inherit image-support 
 
 # set WKS 
 WKS_FILE = "sdcard-ramfs.wks.in"

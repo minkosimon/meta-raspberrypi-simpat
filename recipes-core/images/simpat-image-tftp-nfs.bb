@@ -18,11 +18,10 @@ SUPPORT_IMG_TYPE = "nfs"
 
 # Enable both image-support (for TFTP deployment) and support-img-type (for boot config)
 inherit image-support
-inherit support-img-type
 
 # TFTP/NFS deployment paths
-TFTP_BOOT_FOLDER = "/home/patrick/SERVEUR/tftp-boot"
-FOLDER_NFS_SERVER = "/home/patrick/SERVEUR/nfsroot"
+TFTP_BOOT_FOLDER = "/tmp/srv/tftp-boot"
+FOLDER_NFS_SERVER = "/tmp/srv/nfsroot"
 IP_SERVER_NFS = "192.168.10.20"
 
 # ============================================================================

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "hostname": "board-a",
+  "hostname": "raspberrypi5",
   "interfaces": [
     {
       "name": "eth0",

@@ -15,8 +15,6 @@ inherit network-config
 # Additional packages for networking
 # ============================================================================
 IMAGE_INSTALL:append = " \
-    systemd-networkd-configuration \
-    systemd \
     iproute2 \
     iputils-ping \
 "
@@ -24,10 +22,10 @@ IMAGE_INSTALL:append = " \
 # ============================================================================
 # Per-Machine Network Configuration
 # ============================================================================
-NETWORK_CONFIG_JSON:board-a = "network-board-a.json"
-NETWORK_CONFIG_JSON:board-b = "network-board-b.json"
-NETWORK_CONFIG_JSON:board-c = "network-board-c.json"
-NETWORK_CONFIG_JSON ?= "network-board-a.json"
+NETWORK_CONFIG_JSON:raspberrypi5 = "network-${MACHINE}.json"
+#NETWORK_CONFIG_JSON:board-b = "network-board-b.json"
+#NETWORK_CONFIG_JSON:board-c = "network-board-c.json"
+#NETWORK_CONFIG_JSON ?= "network-board-a.json"
 
 # Ensure network files are in final image
 do_install:append() {

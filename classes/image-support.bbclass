@@ -14,21 +14,19 @@ inherit deploy
 python __anonymous() {
     import os
     
-    fstypes = (d.getVar('IMAGE_FSTYPES') or "").split()
-    support_boot = d.getVar('SUPPORT_BOOT') or ""
-    
-    
     # Detect if this is a TFTP/network deployment
-    if support_boot == "tftp":
-        bb.debug(1, "Auto-detected: TFTP deployment mode")
+    # Check if U-Boot is enabled and update IMAGE_BOOT_FILES accordingly
+    has_uboot = bb.utils.contains('DISTRO_FEATURES', 'uboot', True, False, d)
+    
+    if has_uboot:
+        bb.debug(1, "U-Boot support detected in DISTRO_FEATURES")
+        # Add U-Boot files to IMAGE_BOOT_FILES
+        current_boot_files = d.getVar('IMAGE_BOOT_FILES') or ""
+        uboot_files = "u-boot.bin u-boot.img u-boot-${MACHINE}.bin"
+        if uboot_files not in current_boot_files:
+            d.setVar('IMAGE_BOOT_FILES', current_boot_files + " " + uboot_files)
+            bb.debug(1, f"Updated IMAGE_BOOT_FILES with U-Boot files: {d.getVar('IMAGE_BOOT_FILES')}")
 
-    else:
-        bb.debug(1, "Auto-detected: SD Card deployment mode (WIC)")
-        # Ensure WIC is added for SD Card images
-        if 'wic' not in fstypes:
-            current = d.getVar('IMAGE_FSTYPES:append') or ""
-            if not current:
-                d.setVar('IMAGE_FSTYPES:append', " wic wic.bmap")
 }
 
 # ============================================================================
@@ -47,6 +45,13 @@ IMAGE_SUPPORT_MEDIA ?= "sdcard"
 WKS_FILE_DEPENDS += " \
     virtual/kernel \
     rpi-bootfiles \
+"
+
+# Ensure kernel is deployed before WIC image creation
+do_image_wic[depends] += " \
+    virtual/kernel:do_deploy \
+    rpi-bootfiles:do_deploy \
+    ${@bb.utils.contains('RPI_USE_U_BOOT', '1', 'u-boot:do_deploy', '', d)} \
 "
 
 # Common WIC settings for partitioning
@@ -96,6 +101,7 @@ python do_deploy_cmdline() {
     import os
 
     cmdline = ""
+
 
     # check uboot support from DISTRO_FEATURES
     has_uboot = bb.utils.contains('DISTRO_FEATURES', 'uboot', True, False, d)
@@ -192,26 +198,41 @@ python do_deploy_cmdline() {
 # ============================================================================
 
 # Always run the TFTP deploy task (no stamp file) 
-do_tftp_deploy[nostamp] = "1"
+do_tftp_nfs_deploy[nostamp] = "1"
+
+do_tftp_nfs_deploy[depends] += " \
+    virtual/kernel:do_deploy \
+    rpi-bootfiles:do_deploy \
+    ${@bb.utils.contains('RPI_USE_U_BOOT', '1', 'u-boot:do_deploy', '',d)} \
+    "
 
 # Register task AFTER image generation
-addtask do_tftp_deploy after do_image_complete before do_build
+addtask do_tftp_nfs_deploy after do_image_complete before do_build
 
-python do_tftp_deploy() {
-    import os
+# function to deploy boot files to tftp folder
+
+
+python do_tftp_nfs_deploy() {
+    import os 
     import shutil
     import glob
     import tarfile
 
     
     support_boot = d.getVar('SUPPORT_BOOT') or ""
+    support_img_type = d.getVar('SUPPORT_IMG_TYPE') or ""
     
-    # Only run for TFTP images
-    if support_boot != "tftp":
-        bb.debug(1, "Skipping TFTP deploy (not a TFTP image)")
+    # Only run for TFTP/NFS images OR images with NFS rootfs
+    if support_boot not in ["tftp", "nfs", "sdcard"] and support_img_type != "nfs": 
+        bb.plain("Skipping TFTP/NFS deploy (not a TFTP/NFS or NFS rootfs image)")
         return
     
-    bb.plain("[tftp]: Task started for TFTP image ")
+    # If sdcard boot but no NFS rootfs, skip this task
+    if support_boot == "sdcard" and support_img_type != "nfs":
+        bb.plain("Skipping TFTP/NFS deploy (SD card without NFS rootfs)")
+        return
+    
+    bb.plain("[tftp]: Task started for TFTP/NFS deployment")
     
     tftp_folder = d.getVar('TFTP_BOOT_FOLDER')
     nfs_folder = d.getVar('FOLDER_NFS_SERVER')
@@ -223,21 +244,35 @@ python do_tftp_deploy() {
     machine = d.getVar('MACHINE') or ""
     has_uboot = "uboot" in distro_features.split()
 
-    if not tftp_folder:
-        bb.error("TFTP_BOOT_FOLDER not set")
-        return
-    
-    try:
-        os.makedirs(tftp_folder, exist_ok=True)
-        bb.note(f"Created TFTP folder: {tftp_folder}")
-    except Exception as e:
-        bb.error(f"Failed to create TFTP folder: {e}")
-    
+        
     # ========================================================================
-    # 1. Deploy all boot files from IMAGE_BOOT_FILES to TFTP
+    # 1. Deploy all boot files from IMAGE_BOOT_FILES to TFTP (if TFTP image)
     # ========================================================================
-    if deploy_dir and os.path.exists(deploy_dir) and image_boot_files:
+    if support_boot == "tftp":
         try:
+
+    # ========================================================================
+    # Handle TFTP deployment (only for TFTP images)
+    # ========================================================================
+            try:
+                os.makedirs(tftp_folder, exist_ok=True)
+                bb.note(f"[TFTP] Created TFTP folder: {tftp_folder}")
+            except Exception as e:
+                bb.error(f"[TFTP] Failed to create TFTP folder: {e}")
+
+            # First, copy cmdline.txt if it exists
+            bootfiles_dir = os.path.join(deploy_dir, d.getVar('BOOTFILES_DIR_NAME') or "bootfiles")
+            cmdline_src = os.path.join(bootfiles_dir, "cmdline.txt")
+            if os.path.exists(cmdline_src):
+                try:
+                    cmdline_dst = os.path.join(tftp_folder, "cmdline.txt")
+                    shutil.copy2(cmdline_src, cmdline_dst)
+                    bb.note(f"[TFTP] Copied cmdline.txt to {tftp_folder}")
+                except Exception as e:
+                    bb.warn(f"[TFTP] Failed to copy cmdline.txt: {e}")
+            else:
+                bb.debug(1, f"[TFTP] cmdline.txt not found at {cmdline_src}")
+
             # Parse IMAGE_BOOT_FILES format: "file1 file2 src;dst"
             for boot_file in image_boot_files.split():
                 if not boot_file.strip():
@@ -268,40 +303,32 @@ python do_tftp_deploy() {
                     else:
                         bb.debug(1, f"Boot file not found: {src_path}")
         except Exception as e:
-            bb.error(f"Error deploying boot files: {e}")
-            return
-    
-    # Deploy U-Boot bootloader if present
-    if has_uboot and deploy_dir and os.path.exists(deploy_dir):
-        try:
-            uboot_files = ['u-boot-rpi5.bin', 'u-boot.bin', 'boot.scr']
-            for uboot_file in uboot_files:
-                src_path = os.path.join(deploy_dir, uboot_file)
-                if os.path.exists(src_path):
-                    dst_path = os.path.join(tftp_folder, uboot_file)
-                    shutil.copy2(src_path, dst_path)
-                    bb.debug(1, f"Deployed U-Boot: {uboot_file}")
-        except Exception as e:
-            bb.warn(f"Warning deploying U-Boot files: {e}")
-
+            bb.error(f"Error deploying TFTP boot files: {e}")
     
     # ========================================================================
-    # 3. Extract rootfs TAR to NFS folder (with proper NFS permissions)
+    # 2. Extract rootfs TAR to NFS folder (with proper NFS permissions)
     # ========================================================================
-    if nfs_folder:
+    if support_img_type == "nfs":
         try:
-            # Create NFS folder if needed
-            os.makedirs(nfs_folder, exist_ok=True)
-            bb.note(f"[NFS] Created NFS folder: {nfs_folder}")
             
+            try:
+                os.makedirs(nfs_folder, exist_ok=True)
+                bb.note(f"[NFS] Created NFS folder: {nfs_folder}")
+            except Exception as e:
+                bb.error(f"[NFS] Failed to create NFS folder: {e}")
+
             # Find rootfs TAR file (with or without timestamp)
             rootfs_tar = None
             
             # Search for rootfs files with glob pattern (handles timestamps)
+            # Try multiple patterns - more general first
             patterns = [
                 os.path.join(deploy_dir, f"{image_name}-{machine}-*.rootfs.tar.bz2"),
                 os.path.join(deploy_dir, f"{image_name}-{machine}.rootfs.tar.bz2"),
-                os.path.join(deploy_dir, f"{image_name}.rootfs.tar.bz2"),
+                os.path.join(deploy_dir, f"{image_name}-*-{machine}-*.rootfs.tar.bz2"),
+                os.path.join(deploy_dir, "*-{machine}-*.rootfs.tar.bz2"),
+                os.path.join(deploy_dir, f"{image_name}*.rootfs.tar.bz2"),
+                os.path.join(deploy_dir, "*.rootfs.tar.bz2"),
             ]
             
             for pattern in patterns:
@@ -309,7 +336,8 @@ python do_tftp_deploy() {
                 if matches:
                     # Get the most recent file if multiple matches
                     rootfs_tar = max(matches, key=os.path.getctime)
-                    bb.note(f"[NFS] Using glob pattern: {pattern}")
+                    bb.note(f"[NFS] Found rootfs using pattern: {pattern}")
+                    bb.note(f"[NFS] Selected file: {os.path.basename(rootfs_tar)}")
                     break
             
             if rootfs_tar:
@@ -336,24 +364,20 @@ python do_tftp_deploy() {
                         # Extract new files
                         tar.extractall(path=nfs_folder)
                     
-                    bb.note(f"[NFS] Successfully extracted rootfs to {nfs_folder}")
+                    bb.plain(f"[NFS] Successfully extracted rootfs to {nfs_folder}")
                     
                     # List some directories to verify
                     entries = os.listdir(nfs_folder)[:5]
-                    bb.note(f"[NFS] Contents (first 5): {entries}")
+                    bb.plain(f"[NFS] Contents (first 5): {entries}")
                     
                 except Exception as e:
                     bb.error(f"[NFS] Extraction failed: {e}")
             else:
-                bb.warn(f"[NFS] No rootfs TAR found in {deploy_dir}")
-                # Still create the directory
-                os.makedirs(nfs_folder, exist_ok=True)
+                bb.error(f"[NFS] No rootfs TAR found in {deploy_dir}")
                 
         except Exception as e:
-            bb.warn(f"[NFS] Error: {e}")
+            bb.error(f"[NFS] Error: {e}")
 }
-
-
 
 # ============================================================================
 # Backward Compatibility Layer

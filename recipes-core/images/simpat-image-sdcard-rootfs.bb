@@ -3,7 +3,7 @@ LICENSE = "MIT"
 
 require recipes-core/images/core-image-minimal.bb
 
-inherit image-support support-img-type
+inherit image-support
 
 # Configure for standard SD card boot with local rootfs
 SUPPORT_IMG_TYPE = "rootfs"
