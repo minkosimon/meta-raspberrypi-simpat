@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "hostname": "board-b",
+  "interfaces": [
+    {
+      "name": "eth0",
+      "kind": "ethernet",
+      "description": "Primary Ethernet",
+      "enabled": true,
+      "mtu": 1500
+    },
+    {
+      "name": "vlan10",
+      "kind": "vlan",
+      "description": "VLAN 10 (Management)",
+      "id": 10,
+      "link": "eth0",
+      "dhcp4": true,
+      "mtu": 1500
+    },
+    {
+      "name": "vlan20",
+      "kind": "vlan",
+      "description": "VLAN 20 (Data)",
+      "id": 20,
+      "link": "eth0",
+      "ipv4": ["192.168.2.10/24"],
+      "gateway4": "192.168.2.1",
+      "mtu": 1500
+    },
+    {
+      "name": "br0",
+      "kind": "bridge",
+      "description": "Management Bridge",
+      "members": ["vlan10"],
+      "dhcp4": true,
+      "stp": false,
+      "mtu": 1500
+    }
+  ]
+}

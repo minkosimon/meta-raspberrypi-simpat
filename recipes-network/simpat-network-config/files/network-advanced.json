@@ -1,0 +1,145 @@
+{
+  "version": "1.0",
+  "hostname": "advanced-device",
+  "global": {
+    "dns": ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
+    "ntp": ["time.google.com", "time.cloudflare.com"]
+  },
+  "interfaces": [
+    {
+      "name": "lo",
+      "kind": "loopback",
+      "description": "Loopback interface"
+    },
+    {
+      "name": "eth0",
+      "kind": "ethernet",
+      "description": "Primary Physical Interface",
+      "enabled": true,
+      "mtu": 1500,
+      "multicast": true,
+      "arp": true
+    },
+    {
+      "name": "eth1",
+      "kind": "ethernet",
+      "description": "Secondary Physical Interface",
+      "enabled": true,
+      "mtu": 1500,
+      "multicast": true,
+      "arp": true
+    },
+    {
+      "name": "eth2",
+      "kind": "ethernet",
+      "description": "Tertiary Physical Interface",
+      "enabled": true,
+      "mtu": 9000,
+      "multicast": true,
+      "arp": true
+    },
+    {
+      "name": "vlan1",
+      "kind": "vlan",
+      "description": "Management VLAN",
+      "id": 1,
+      "link": "eth0",
+      "dhcp4": true,
+      "dns": ["8.8.8.8"],
+      "dns_search": ["local.example.com"],
+      "mtu": 1500
+    },
+    {
+      "name": "vlan100",
+      "kind": "vlan",
+      "description": "Production Data VLAN",
+      "id": 100,
+      "link": "eth0",
+      "ipv4": ["192.168.100.10/24", "192.168.100.11/24"],
+      "gateway4": "192.168.100.1",
+      "dns": ["8.8.8.8", "8.8.4.4"],
+      "dns_search": ["example.com"],
+      "routes": [
+        {
+          "destination": "192.168.101.0/24",
+          "gateway": "192.168.100.254",
+          "metric": 100
+        }
+      ],
+      "mtu": 1500
+    },
+    {
+      "name": "vlan200",
+      "kind": "vlan",
+      "description": "IoT/Edge Computing VLAN",
+      "id": 200,
+      "link": "eth0",
+      "ipv4": ["10.0.0.10/24"],
+      "gateway4": "10.0.0.1",
+      "mtu": 1500
+    },
+    {
+      "name": "vlan300",
+      "kind": "vlan",
+      "description": "Guest Network VLAN",
+      "id": 300,
+      "link": "eth1",
+      "dhcp4": true,
+      "mtu": 1500
+    },
+    {
+      "name": "bond0",
+      "kind": "bond",
+      "description": "Bonded High-Speed Link (eth2 for jumbo frames)",
+      "members": ["eth2"],
+      "mode": "active-backup",
+      "miimon": 100,
+      "downdelay": 200,
+      "updelay": 200,
+      "ipv4": ["192.168.200.10/24"],
+      "gateway4": "192.168.200.1",
+      "mtu": 9000,
+      "multicast": true
+    },
+    {
+      "name": "br0",
+      "kind": "bridge",
+      "description": "Management Bridge",
+      "members": ["vlan1"],
+      "stp": false,
+      "forward_delay": 0,
+      "hello_time": 2,
+      "max_age": 20,
+      "dhcp4": true,
+      "mtu": 1500,
+      "multicast": true
+    },
+    {
+      "name": "br100",
+      "kind": "bridge",
+      "description": "Production Bridge (VLAN100)",
+      "members": ["vlan100"],
+      "stp": true,
+      "forward_delay": 15,
+      "hello_time": 2,
+      "max_age": 20,
+      "cost": {
+        "vlan100": 32
+      },
+      "ipv4": ["192.168.100.100/24"],
+      "gateway4": "192.168.100.1",
+      "mtu": 1500,
+      "multicast": true
+    },
+    {
+      "name": "vxlan0",
+      "kind": "vlan",
+      "description": "VXLAN Overlay (Virtual)",
+      "id": 4094,
+      "link": "eth0",
+      "ipv4": ["172.16.0.10/24"],
+      "mtu": 1550,
+      "multicast": true
+    }
+  ]
+}

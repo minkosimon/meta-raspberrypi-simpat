@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "hostname": "board-c",
+  "interfaces": [
+    {
+      "name": "eth0",
+      "kind": "ethernet",
+      "description": "Primary Link (Redundancy)",
+      "enabled": true,
+      "mtu": 1500
+    },
+    {
+      "name": "eth1",
+      "kind": "ethernet",
+      "description": "Secondary Link (Redundancy)",
+      "enabled": true,
+      "mtu": 1500
+    },
+    {
+      "name": "bond0",
+      "kind": "bond",
+      "description": "Bonded Interface (Active-Backup)",
+      "members": ["eth0", "eth1"],
+      "mode": "active-backup",
+      "miimon": 100,
+      "primary": "eth0",
+      "dhcp4": true,
+      "mtu": 1500
+    }
+  ]
+}

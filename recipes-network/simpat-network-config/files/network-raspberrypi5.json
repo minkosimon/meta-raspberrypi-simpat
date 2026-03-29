@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "hostname": "raspberrypi5",
+  "interfaces": [
+    {
+      "name": "eth0",
+      "kind": "ethernet",
+      "description": "Primary Ethernet (Static IP)",
+      "dhcp4": false,
+      "ipv4": ["192.168.10.22/24"],
+      "gateway4": "192.168.10.1",
+      "mtu": 1500,
+      "multicast": true,
+      "arp": true
+    }
+  ]
+}

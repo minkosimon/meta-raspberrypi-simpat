@@ -1,0 +1,9 @@
+# /etc/fstab: static file system information.
+#
+tmpfs           /tmp            tmpfs           defaults,noatime,mode=1777     0       0
+devtmpfs        /dev            devtmpfs        defaults                        0       0
+proc            /proc           proc            defaults                        0       0
+sysfs           /sys            sysfs           defaults                        0       0
+
+# NFS root filesystem is mounted by the kernel during boot
+# 192.168.10.20:/home/patrick/SERVEUR/nfsroot  /  nfs  defaults 0  0
