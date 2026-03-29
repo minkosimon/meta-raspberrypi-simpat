@@ -23,3 +23,8 @@ INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 INITRAMFS_IMAGE_BUNDLE = "1"
 SUPPORT_WIC_BOOT_PARTITION_SIZE = "128"
 
+# WiFi and Bluetooth firmware
+IMAGE_INSTALL:append = " \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+"

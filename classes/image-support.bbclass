@@ -157,7 +157,7 @@ python do_deploy_cmdline() {
 
         
     elif mode_boot == "tftp" and support_img_type == "nfs":
-        cmdline = f"console=ttyAMA0,115200 console=tty1 root=/dev/nfs nfsroot={ip_server_nfs}:{folder_nfs_server},vers=3 rw ip=dhcp"
+        cmdline = f"console=serial0,115200 console=tty1 root=/dev/nfs nfsroot={ip_server_nfs}:{folder_nfs_server},vers=3 rw ip=dhcp"
         bb.plain("[cmdline] : TFTP mode with NFS rootfs ")
         bb.debug(1, f"[cmdline] Generated cmdline: {cmdline}")
 
@@ -203,11 +203,12 @@ do_tftp_nfs_deploy[nostamp] = "1"
 do_tftp_nfs_deploy[depends] += " \
     virtual/kernel:do_deploy \
     rpi-bootfiles:do_deploy \
+    rpi-cmdline:do_deploy \
     ${@bb.utils.contains('RPI_USE_U_BOOT', '1', 'u-boot:do_deploy', '',d)} \
     "
 
-# Register task AFTER image generation
-addtask do_tftp_nfs_deploy after do_image_complete before do_build
+# Register task AFTER image generation AND after cmdline.txt is generated
+addtask do_tftp_nfs_deploy after do_image_complete do_deploy_cmdline before do_build
 
 # function to deploy boot files to tftp folder
 
@@ -224,6 +225,7 @@ python do_tftp_nfs_deploy() {
     
     # Only run for TFTP/NFS images OR images with NFS rootfs
     if support_boot not in ["tftp", "nfs", "sdcard"] and support_img_type != "nfs": 
+
         bb.plain("Skipping TFTP/NFS deploy (not a TFTP/NFS or NFS rootfs image)")
         return
     

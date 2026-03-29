@@ -18,3 +18,9 @@ WKS_FILE = "sdcard-nfs.wks.in"
 
 # Keep a rootfs archive artifact that can be exported over NFS
 IMAGE_FSTYPES:append = " tar.gz wic.bz2"
+
+# WiFi and Bluetooth firmware
+IMAGE_INSTALL:append = " \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+"

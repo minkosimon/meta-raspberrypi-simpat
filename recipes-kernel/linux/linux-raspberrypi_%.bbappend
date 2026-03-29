@@ -3,6 +3,10 @@
 INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 INITRAMFS_IMAGE_BUNDLE = "1"
 
+# Systemd kernel configuration fragments
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://systemd.cfg"
+
 # Ensure kernel Image is deployed for WIC image creation
 do_deploy:append() {
     # Copy kernel Image to deploy directory

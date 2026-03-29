@@ -138,16 +138,20 @@ python do_generate_networkd_config() {
     # Look for config file in WORKDIR first (fetched from SRC_URI)
     config_path = workdir / config_file
     schema_path = workdir / 'schema.json'
+    template_dir = workdir / 'templates'
     
     # Fallback to THISDIR for local files
     if not config_path.exists():
-        config_path = Path(d.getVar('THISDIR')) / config_file
+        config_path = Path(d.getVar('THISDIR')) / 'files' / config_file
     if not schema_path.exists():
-        schema_path = Path(d.getVar('THISDIR')) / 'schema.json'
+        schema_path = Path(d.getVar('THISDIR')) / 'files' / 'schema.json'
+    if not template_dir.exists():
+        template_dir = Path(d.getVar('THISDIR')) / 'files' / 'templates'
     
     if not config_path.exists():
         bb.error(f"Network config not found: {config_path}")
         raise Exception(f"Missing network config: {config_path}")
+    
     
     if not schema_path.exists():
         bb.warn(f"Schema not found, skipping validation: {schema_path}")
@@ -156,8 +160,6 @@ python do_generate_networkd_config() {
         config = validate_network_config(str(config_path), str(schema_path))
     
     config = expand_network_config(config)
-    
-    template_dir = Path(d.getVar('THISDIR')) / 'templates'
     
     iface_index = 10
     for interface in config.get('interfaces', []):

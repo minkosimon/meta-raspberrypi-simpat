@@ -20,15 +20,26 @@ SUPPORT_IMG_TYPE = "nfs"
 inherit image-support
 
 # TFTP/NFS deployment paths
-TFTP_BOOT_FOLDER = "/tmp/srv/tftp-boot"
-FOLDER_NFS_SERVER = "/tmp/srv/nfsroot"
+TFTP_BOOT_FOLDER = "/home/patrick/SERVEUR/tftp-boot"
+FOLDER_NFS_SERVER = "/home/patrick/SERVEUR/nfsroot"
 IP_SERVER_NFS = "192.168.10.20"
 
-# ============================================================================
+# ==============================================
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# ==============================
 # Force NFS boot parameters in kernel command line
 # ============================================================================
 # Override rpi-cmdline.bbappend to ensure NFS boot parameters are used
-CMDLINE_ROOTFS = "root=/dev/nfs nfsroot=${IP_SERVER_NFS}:${FOLDER_NFS_SERVER},vers=3,nolock rw ip=dhcp"
+# Added: ip_auto_config timeout and nfsaddrs for better network stability
+CMDLINE_ROOTFS = "root=/dev/nfs nfsroot=${IP_SERVER_NFS}:${FOLDER_NFS_SERVER},vers=3,nolock rw ip=dhcp ip_auto_config_timeout=30"
 
 # ============================================================================
 # Network Boot Packages
@@ -41,6 +52,9 @@ IMAGE_INSTALL:append = " \
     netbase \
     openssh \
     openssh-sftp-server \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+    systemd-nfsboot-config \
 "
 
 # ============================================================================

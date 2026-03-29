@@ -39,6 +39,9 @@ IMAGE_INSTALL:append = " \
     udev \
     openssh \
     openssh-sftp-server \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+    systemd-nfsboot-config \
 "
 
 # Enable systemd for boot management

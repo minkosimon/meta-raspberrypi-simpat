@@ -14,3 +14,9 @@ WKS_FILE = "sdcard-rootfs.wks.in"
 # Configure for TFTP boot with rootfs in RAM
 SUPPORT_BOOT := "sdcard"
 SUPPORT_IMG_TYPE := "rootfs"
+
+# WiFi and Bluetooth firmware
+IMAGE_INSTALL:append = " \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+"
