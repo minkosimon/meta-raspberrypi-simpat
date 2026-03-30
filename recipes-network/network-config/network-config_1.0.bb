@@ -38,7 +38,7 @@ RDEPENDS:${PN}:append = " ${@oe.utils.conditional('DISTRO_FEATURES', 'systemd', 
 # Packaging
 # ============================================================================
 # Only package network configs if NETWORK_CONFIG_JSON is set
-FILES:${PN} = "${@'${systemd_system_unitdir}/network/*' if d.getVar('NETWORK_CONFIG_JSON') else ''}"
+FILES:${PN} = "${@'${sysconfdir}/systemd/network/*' if d.getVar('NETWORK_CONFIG_JSON') else ''}"
 
 # Configuration files are not user-editable (auto-generated)
 CONFFILES:${PN} = ""

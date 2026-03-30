@@ -27,24 +27,30 @@ layer meta-raspberrypi get dependance with layers:
 
 # Documentation Structure
 
-This layer's documentation is organized into three levels:
+This layer's documentation is organized into four levels:
 
 1. **[README.md](README.md)** (this file) - Quick overview and usage guide
-2. **[classes/README-CLASS.md](classes/README-CLASS.md)** - Detailed class documentation
-3. **[recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)** - Detailed recipe documentation
+2. **[classes/README-CLASS.md](classes/README-CLASS.md)** - Detailed class documentation (`image-support`, `support-img-type`, `network-config`)
+3. **[recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)** - Detailed image recipe documentation
+4. **Network Configuration:**
+   - [recipes-network/simpat-network-config/DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md) - Fonctionnement complet de la recette `simpat-network-config`
+   - [recipes-network/simpat-network-config/SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md) - Résumé du système de configuration réseau
+   - [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md) - Cas d'usage pratiques (DHCP, IP statique, VLAN, bridge, bond)
 
 ### Documentation Navigation Map
 
 ```mermaid
 graph TD
-    A["📖 README.md<br/>(This file)<br/>Quick Start & Overview"]
-    B["🔷 classes/README-CLASS.md<br/>Class Details & Internals"]
-    C["📚 recipes-core/images/<br/>README-RECIPE.md<br/>Recipes & Examples"]
+    A["README.md<br/>(This file)<br/>Quick Start & Overview"]
+    B["classes/README-CLASS.md<br/>Class Details & Internals"]
+    C["recipes-core/images/<br/>README-RECIPE.md<br/>Recipes & Examples"]
+    D["recipes-network/<br/>simpat-network-config/<br/>DOCUMENTATION.md<br/>Network Config"]
     
-    A -->|"I want to build<br/>an image"| REC["☑️ Choose Recipe<br/>Decision Tree"]
+    A -->|"I want to build<br/>an image"| REC["Choose Recipe<br/>Decision Tree"]
     REC -->|"Show me how"| C
     
     A -->|"I want to understand<br/>how it works"| B
+    A -->|"I need to configure<br/>the network"| D
     A -->|"I need to debug<br/>or customize"| BOTH["Read both<br/>Classes + Recipes"]
     
     B -->|"Show me<br/>variables"| VARS["Key Variables<br/>Reference"]
@@ -53,11 +59,15 @@ graph TD
     C -->|"Configuration<br/>examples"| CONFIG["Config<br/>Templates"]
     C -->|"I want custom<br/>recipe"| CUSTOM["Custom Recipe<br/>Template"]
     
+    D -->|"Use cases"| UC["USECASES.md"]
+    D -->|"Summary"| SUM["SUMMARY.md"]
+    
     REC -.->|"Need help<br/>choosing?"| DECISION["Use Decision<br/>Tree in RECIPE"]
     
     style A fill:#e3f2fd,stroke:#01579b,stroke-width:2px
     style B fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     style C fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    style D fill:#fce4ec,stroke:#c62828,stroke-width:2px
     style REC fill:#c8e6c9,stroke:#2e7d32
     style DECISION fill:#fff9c4,stroke:#f57f17
 ```
@@ -70,26 +80,24 @@ The layer's architecture is built on **two core classes** that work together wit
 
 ## Class Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    image-support (Base)                     │
-│                                                             │
-│  • Auto-detects deployment type (SD Card vs TFTP)          │
-│  • Manages WIC configuration for SD Card images            │
-│  • Handles TFTP/NFS boot file deployment                   │
-│  • Bootloader detection (U-Boot vs EEPROM)                 │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         │ (inherits)
-                         │
-┌────────────────────────▼────────────────────────────────────┐
-│              support-img-type (SD Card specific)            │
-│                                                             │
-│  • Configures image type (rootfs/ramfs/nfs)               │
-│  • Sets WKS (kickstart) file based on type                │
-│  • Manages boot files generation                          │
-│  • Handles kernel bundling for initramfs images           │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph BASE["image-support (Base)"]
+        A1["Auto-detects deployment type\n(SD Card vs TFTP)"]
+        A2["Manages WIC configuration\nfor SD Card images"]
+        A3["Handles TFTP/NFS boot\nfile deployment"]
+        A4["Bootloader detection\n(U-Boot vs EEPROM)"]
+    end
+    subgraph CHILD["support-img-type (SD Card specific)"]
+        B1["Configures image type\n(rootfs/ramfs/nfs)"]
+        B2["Sets WKS kickstart file\nbased on type"]
+        B3["Manages boot files\ngeneration"]
+        B4["Handles kernel bundling\nfor initramfs images"]
+    end
+    BASE -->|inherits| CHILD
+
+    style BASE fill:#e3f2fd,stroke:#01579b,stroke-width:2px
+    style CHILD fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
 ## Class Descriptions
@@ -263,32 +271,31 @@ Handled transparently by `image-support` and `rpi-cmdline.bbappend`.
 
 ### Build Flow for SD Card Images
 
-```
-Your Recipe (simpat-image-sdcard-nfs)
-    ↓
-Inherits image-support → Auto-enables WIC, skips TFTP deployment
-    ↓
-Inherits support-img-type → Maps type to WKS file (sdcard-nfs.wks.in)
-    ↓
-BitBake generates .wic image using WIC tool
-    ↓
-Output: Ready to burn to SD card
+```mermaid
+flowchart TD
+    R1["Your Recipe\nsimpat-image-sdcard-nfs"] --> S1["Inherits image-support\nAuto-enables WIC, skips TFTP"]
+    S1 --> S2["Inherits support-img-type\nMaps type → sdcard-nfs.wks.in"]
+    S2 --> S3["BitBake generates\n.wic image using WIC tool"]
+    S3 --> S4["Output: Ready to burn\nto SD card"]
+
+    style R1 fill:#e3f2fd,stroke:#01579b
+    style S4 fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ### Build Flow for TFTP Images
 
-```
-Your Recipe (simpat-image-tftp-nfs)
-    ↓
-Inherits image-support → Enables TFTP deployment, uses tar.bz2
-    ↓
-BitBake generates tar.bz2 rootfs
-    ↓
-do_tftp_deploy runs automatically
-    ├─ Copies kernel, DTB, bootfiles to /tmp/srv/tftp/
-    └─ Extracts rootfs to /tmp/srv/nfsroot/
-    ↓
-Output: Files ready for TFTP/NFS boot
+```mermaid
+flowchart TD
+    R2["Your Recipe\nsimpat-image-tftp-nfs"] --> T1["Inherits image-support\nEnables TFTP, uses tar.bz2"]
+    T1 --> T2["BitBake generates\ntar.bz2 rootfs"]
+    T2 --> T3["do_tftp_deploy\nruns automatically"]
+    T3 --> T4["Copies kernel, DTB, bootfiles\nto /tmp/srv/tftp/"]
+    T3 --> T5["Extracts rootfs\nto /tmp/srv/nfsroot/"]
+    T4 --> T6["Output: Files ready\nfor TFTP/NFS boot"]
+    T5 --> T6
+
+    style R2 fill:#e3f2fd,stroke:#01579b
+    style T6 fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ---
@@ -297,9 +304,12 @@ Output: Files ready for TFTP/NFS boot
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **README.md** | Quick overview, common tasks | Everyone |
+| **[README.md](README.md)** | Quick overview, common tasks | Everyone |
 | **[classes/README-CLASS.md](classes/README-CLASS.md)** | Class internals, configuration, debugging | Advanced users, developers |
 | **[recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)** | Recipe details, examples, customization | Recipe developers |
+| **[DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)** | Configuration réseau systemd-networkd | Network developers |
+| **[SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md)** | Résumé du système réseau | Everyone |
+| **[USECASES.md](recipes-network/simpat-network-config/USECASES.md)** | Cas d'usage réseau (VLAN, bridge, bond) | Network developers |
 
 ---
 
@@ -340,6 +350,8 @@ The `meta-raspberrypi-simpat` layer provides a clean, maintainable approach to b
 
 👉 Classes deep-dive: [classes/README-CLASS.md](classes/README-CLASS.md)  
 👉 Recipe details: [recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)  
+👉 Network config: [recipes-network/simpat-network-config/DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)  
+👉 Network use cases: [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md)  
 👉 WKS templates: See `wic/` directory  
 👉 Main project: [README.md](README.md)
 

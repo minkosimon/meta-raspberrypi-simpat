@@ -55,6 +55,7 @@ IMAGE_INSTALL:append = " \
     linux-firmware-rpidistro-bcm43455 \
     bluez-firmware-rpidistro-bcm4345c0-hcd \
     systemd-nfsboot-config \
+    simpat-network-config \
 "
 
 # ============================================================================

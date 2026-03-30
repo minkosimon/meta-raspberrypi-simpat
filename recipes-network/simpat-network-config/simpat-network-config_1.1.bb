@@ -13,10 +13,10 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 # Source files: templates and configuration
 SRC_URI = " \
-    file://files/templates/network.j2 \
-    file://files/templates/netdev.j2 \
-    file://files/templates/link.j2 \
-    file://files/network-${MACHINE}.json \
+    file://templates/network.j2 \
+    file://templates/netdev.j2 \
+    file://templates/link.j2 \
+    file://network-${MACHINE}.json \
 "
 
 # ============================================================================
@@ -37,5 +37,4 @@ RDEPENDS:${PN} += "systemd"
 # ============================================================================
 # Package Definition
 # ============================================================================
-#FILES:${PN} = "${systemd_system_unitdir}/network/*"
-FILES:${PN} = "${systemd_system_unitdir}/network/*"
+FILES:${PN} = "${sysconfdir}/systemd/network/*"

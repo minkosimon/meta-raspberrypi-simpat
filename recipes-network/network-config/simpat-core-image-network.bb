@@ -30,7 +30,7 @@ NETWORK_CONFIG_JSON:raspberrypi5 = "network-${MACHINE}.json"
 # Ensure network files are in final image
 do_install:append() {
     if [ -d "${NETWORKD_CONFIG_DIR}" ]; then
-        install -d ${D}${systemd_system_unitdir}/network
-        install -m 0644 ${NETWORKD_CONFIG_DIR}/* ${D}${systemd_system_unitdir}/network/ 2>/dev/null || true
+        install -d ${D}${sysconfdir}/systemd/network
+        install -m 0644 ${NETWORKD_CONFIG_DIR}/* ${D}${sysconfdir}/systemd/network/ 2>/dev/null || true
     fi
 }

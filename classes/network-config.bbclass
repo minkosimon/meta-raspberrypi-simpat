@@ -178,9 +178,9 @@ python do_generate_networkd_config() {
 do_install() {
     # Only install if network config was generated
     if [ -d "${WORKDIR}/networkd-config" ] && [ "$(ls -A ${WORKDIR}/networkd-config)" ]; then
-        install -d ${D}${systemd_system_unitdir}/network
-        install -m 0644 ${WORKDIR}/networkd-config/* ${D}${systemd_system_unitdir}/network/
-        bbnote "Installed network configuration files to ${D}${systemd_system_unitdir}/network/"
+        install -d ${D}${sysconfdir}/systemd/network
+        install -m 0644 ${WORKDIR}/networkd-config/* ${D}${sysconfdir}/systemd/network/
+        bbnote "Installed network configuration files to ${D}${sysconfdir}/systemd/network/"
     fi
 }
 
@@ -192,6 +192,8 @@ RDEPENDS:${PN} += "systemd"
 # ============================================================================
 # Task Flags and Dependencies
 # ============================================================================
+do_generate_networkd_config[nostamp] = "1"
+do_install[nostamp] = "1"
 
 addtask do_generate_networkd_config before do_install
 
@@ -201,7 +203,7 @@ INHIBIT_PACKAGE_STRIP = "1"
 INHIBIT_SYSROOT_STAGING = "1"
 
 # Files to include in packages
-FILES:${PN} = "${systemd_system_unitdir}/network/*"
+FILES:${PN} = "${sysconfdir}/systemd/network/*"
 
 # Package metadata
 SUMMARY = "Network configuration for systemd-networkd"
