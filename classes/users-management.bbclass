@@ -27,7 +27,7 @@ def _users_mgmt_parse(d, section):
                     bb.fatal("User '%s' references group '%s' which is not defined in the 'groups' list. "
                              "Add it to the 'groups' array in %s" % (name, g, json_file))
             groups = ",".join(user_groups)
-            params.append("-m -s /bin/bash -p '%s' -G %s %s" % (escaped_password, groups, name))
+            params.append("-m -p '%s' -G %s %s" % (escaped_password, groups, name))
         return " ; ".join(params)
     elif section == "ssh":
         ssh_data = []
@@ -160,4 +160,4 @@ fakeroot python do_install_ssh_keys() {
 do_install_ssh_keys[nostamp] = "1"
 addtask do_install_ssh_keys after do_install before do_package
 
-RDEPENDS:${PN} = "openssh bash"
+RDEPENDS:${PN} = "openssh"

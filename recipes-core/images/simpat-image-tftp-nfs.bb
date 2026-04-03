@@ -59,6 +59,7 @@ IMAGE_INSTALL:append = " \
     simpat-network-config \
     user-management \
     console-keymap \
+    helloworld \
 "
 
 # ============================================================================
