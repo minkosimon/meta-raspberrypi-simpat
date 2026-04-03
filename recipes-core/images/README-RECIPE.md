@@ -20,6 +20,7 @@ graph LR
     subgraph Classes["Core Classes"]
         IS["🔷 image-support<br/>(Base Class)"]
         SIT["🔶 support-img-type<br/>(SD Card Only)"]
+        UM["🟢 users-management<br/>(User/Group/SSH/Shell)"]
         IS -->|inherits| SIT
     end
     
@@ -35,6 +36,11 @@ graph LR
         TTRAM["🌐 tftp-ramfs<br/>(TFTP+RAM)"]
     end
     
+    subgraph Support["Support Recipes"]
+        UMR["👤 user-management<br/>(inherits users-management)"]
+        CK["⌨️ console-keymap<br/>(AZERTY keyboard)"]
+    end
+    
     SIT -.->|configures| SDCR
     SIT -.->|configures| SDCN
     SIT -.->|configures| SDCRAM
@@ -47,14 +53,21 @@ graph LR
     IS -.->|configures| TTNFS
     IS -.->|configures| TTRAM
     
+    UM -->|inherited by| UMR
+    UMR -.->|IMAGE_INSTALL| TTNFS
+    CK -.->|IMAGE_INSTALL| TTNFS
+    
     style IS fill:#e1f5ff
     style SIT fill:#fff9c4
+    style UM fill:#e8f5e9
     style SDCR fill:#c8e6c9
     style SDCN fill:#c8e6c9
     style SDCRAM fill:#c8e6c9
     style TT fill:#ffe0b2
     style TTNFS fill:#ffe0b2
     style TTRAM fill:#ffe0b2
+    style UMR fill:#c8e6c9
+    style CK fill:#c8e6c9
 ```
 
 ---
@@ -552,10 +565,11 @@ SUPPORT_IMG_TYPE := "nfs"
 
 inherit image-support
 
-TFTP_BOOT_FOLDER ?= "/tmp/srv/tftp"
-FOLDER_NFS_SERVER ?= "/tmp/srv/nfsroot"
+TFTP_BOOT_FOLDER = "/home/patrick/SERVEUR/tftp-boot"
+FOLDER_NFS_SERVER = "/home/patrick/SERVEUR/nfsroot"
+IP_SERVER_NFS = "192.168.10.20"
 
-IP_SERVER_NFS ?= "192.168.1.100"
+CMDLINE_ROOTFS = "root=/dev/nfs nfsroot=${IP_SERVER_NFS}:${FOLDER_NFS_SERVER},vers=3,nolock rw ip=dhcp ip_auto_config_timeout=30"
 
 IMAGE_INSTALL:append = " \
     kernel-modules \
@@ -563,14 +577,41 @@ IMAGE_INSTALL:append = " \
     base-files \
     base-passwd \
     netbase \
+    bash \
     openssh \
     openssh-sftp-server \
+    linux-firmware-rpidistro-bcm43455 \
+    bluez-firmware-rpidistro-bcm4345c0-hcd \
+    systemd-nfsboot-config \
+    simpat-network-config \
+    user-management \
+    console-keymap \
 "
 
 DISTRO_FEATURES:append = " systemd"
 VIRTUAL-RUNTIME_init_manager = "systemd"
+VIRTUAL-RUNTIME_initcalls = ""
+
 EXTRA_IMAGE_FEATURES:append = " ssh-server-openssh"
 ```
+
+#### Installed Packages
+
+| Package | Purpose |
+|---------|---------|
+| `kernel-modules` | Kernel modules for hardware support |
+| `udev` | Device manager (systemd-udevd) |
+| `base-files` | Base filesystem layout + `/etc/profile.d/sbin-path.sh` |
+| `base-passwd` | Base user accounts (root, nobody, etc.) |
+| `netbase` | Base network configuration files |
+| `bash` | GNU Bash shell (default shell for created users) |
+| `openssh` + `openssh-sftp-server` | SSH server for remote access |
+| `linux-firmware-rpidistro-bcm43455` | WiFi firmware |
+| `bluez-firmware-rpidistro-bcm4345c0-hcd` | Bluetooth firmware |
+| `systemd-nfsboot-config` | NFS boot systemd configuration |
+| `simpat-network-config` | Custom network configuration |
+| `user-management` | JSON-driven user/group/SSH/shell provisioning |
+| `console-keymap` | Console keyboard layout (AZERTY `KEYMAP=fr`) |
 
 #### Key Variables
 
@@ -578,9 +619,9 @@ EXTRA_IMAGE_FEATURES:append = " ssh-server-openssh"
 |----------|---------|---------|
 | `SUPPORT_BOOT` | "tftp" | Boot type (tftp) |
 | `SUPPORT_IMG_TYPE` | "nfs" | Image type (nfs - rootfs via NFS) |
-| `TFTP_BOOT_FOLDER` | "/tmp/srv/tftp" | TFTP server folder for boot files |
-| `FOLDER_NFS_SERVER` | "/tmp/srv/nfsroot" | NFS server folder for rootfs |
-| `IP_SERVER_NFS` | "192.168.1.100" | NFS server IP address |
+| `TFTP_BOOT_FOLDER` | "/home/patrick/SERVEUR/tftp-boot" | TFTP server folder for boot files |
+| `FOLDER_NFS_SERVER` | "/home/patrick/SERVEUR/nfsroot" | NFS server folder for rootfs |
+| `IP_SERVER_NFS` | "192.168.10.20" | NFS server IP address |
 
 #### Output Artifacts
 
@@ -597,13 +638,13 @@ Both boot files AND rootfs are deployed:
 1. `bitbake simpat-image-tftp-nfs`
 2. BitBake creates tar.bz2 rootfs archive
 3. `do_tftp_deploy` task runs automatically
-   - Extracts and copies boot files to `/tmp/srv/tftp/`
-   - Extracts rootfs tar.bz2 to `/tmp/srv/nfsroot/`
+   - Extracts and copies boot files to `/home/patrick/SERVEUR/tftp-boot/`
+   - Extracts rootfs tar.bz2 to `/home/patrick/SERVEUR/nfsroot/`
 4. Both TFTP and NFS are now populated
 
 **Boot Time:**
 1. Bootloader via TFTP downloads kernel and DTB
-2. Kernel boots with command line: `root=/dev/nfs nfsroot=192.168.1.100:/tmp/srv/nfsroot`
+2. Kernel boots with command line: `root=/dev/nfs nfsroot=192.168.10.20:/home/patrick/SERVEUR/nfsroot,vers=3,nolock rw ip=dhcp`
 3. Kernel mounts rootfs from NFS server over ethernet
 4. Complete Linux system boots from network
 
@@ -796,6 +837,138 @@ IMAGE_INSTALL:append = " \
 # Larger rootfs for test tools
 IMAGE_ROOTFS_SIZE = "65536"
 ```
+
+---
+
+## Support Recipes
+
+These recipes provide system-level services used by the image recipes via `IMAGE_INSTALL`.
+
+### Package Dependency Flow
+
+```mermaid
+graph TD
+    IMG["🖥️ simpat-image-tftp-nfs<br/>(Image Recipe)"]
+    
+    IMG -->|IMAGE_INSTALL| UM["👤 user-management"]
+    IMG -->|IMAGE_INSTALL| CK["⌨️ console-keymap"]
+    IMG -->|IMAGE_INSTALL| BASH["🐚 bash"]
+    IMG -->|IMAGE_INSTALL| SSH["🔐 openssh"]
+    
+    UM -->|inherits| UMC["users-management.bbclass"]
+    UM -->|RDEPENDS| SSH
+    UMC -->|inherits| UA["useradd.bbclass"]
+    
+    CK -->|RDEPENDS| KBD["kbd"]
+    CK -->|RDEPENDS| KM["keymaps"]
+    
+    UMC -->|reads| JSON["📄 users-groups-management.json"]
+    JSON -->|defines| USERS["simon, guest"]
+    JSON -->|defines| GROUPS["admin, application"]
+    JSON -->|references| FILES["SSH keys, .bashrc,<br/>.bash_profile"]
+    
+    style IMG fill:#ffe0b2
+    style UM fill:#c8e6c9
+    style CK fill:#c8e6c9
+    style UMC fill:#e8f5e9
+    style JSON fill:#fff3e0
+```
+
+### 1. `user-management` Recipe
+
+**File Location:** `recipes-user-management/user-management/user-management.bb`
+
+**Purpose:** Provisions system users, groups, SSH keys, and shell configuration from a centralized JSON file using `users-management.bbclass`.
+
+#### What It Does
+
+1. **Creates groups** defined in JSON (`admin`, `application`) via `groupadd -r`
+2. **Creates users** with SHA-512 password hashes, group membership, and `/bin/bash` as default shell
+3. **Deploys SSH keys** (private + public) to `~/.ssh/` with correct permissions
+4. **Deploys `authorized_keys`** to `~/.ssh/authorized_keys`
+5. **Deploys `.bashrc`** and **`.bash_profile`** to user home directories
+
+#### Current Users
+
+| User | Groups | Shell | SSH Key | bashrc | bash_profile |
+|------|--------|-------|---------|--------|-------------|
+| `simon` | admin, application | `/bin/bash` | ed25519 | Yes | Yes |
+| `guest` | admin, application | `/bin/bash` | ed25519 | Yes | Yes |
+
+#### Deployed File Structure (per user)
+
+```
+/home/<user>/
+├── .ssh/                    (mode 0700)
+│   ├── id_ed25519           (mode 0600)
+│   ├── id_ed25519.pub       (mode 0644)
+│   └── authorized_keys      (mode 0600)
+├── .bashrc                  (mode 0644)
+└── .bash_profile            (mode 0644)
+```
+
+#### `.bashrc` Highlights
+
+- `umask 027` — restrictive default permissions
+- `PS1` with hostname and working directory
+- Safe aliases: `rm -i`, `cp -i`, `mv -i`
+- `set -o noclobber` — prevent accidental file overwrites
+- `HISTCONTROL=ignoreboth` — no duplicate/blank history entries
+- `ulimit -c 0` — disable core dumps
+
+#### `.bash_profile` Highlights
+
+- `umask 027` — consistent with `.bashrc`
+- Full `PATH` with `/usr/local/sbin:/usr/sbin:/sbin`
+- `LANG=C`, `LC_ALL=C` — consistent locale
+- `TMOUT=600` — auto-logout after 10 minutes idle
+- Sources `~/.bashrc` for interactive shells
+
+> See [README-CLASS.md](../../classes/README-CLASS.md#3-users-management-bbclass) for the bbclass internals.
+
+---
+
+### 2. `console-keymap` Recipe
+
+**File Location:** `recipes-core/console-keymap/console-keymap.bb`
+
+**Purpose:** Configures the Linux console keyboard layout to French AZERTY.
+
+#### Configuration
+
+```bitbake
+SUMMARY = "Configure console keyboard layout to French AZERTY"
+LICENSE = "MIT"
+
+SRC_URI = "file://vconsole.conf"
+
+RDEPENDS:${PN} = "kbd keymaps"
+
+do_install() {
+    install -d ${D}${sysconfdir}
+    install -m 0644 ${WORKDIR}/vconsole.conf ${D}${sysconfdir}/vconsole.conf
+}
+
+FILES:${PN} = "${sysconfdir}/vconsole.conf"
+```
+
+#### Installed File
+
+**`/etc/vconsole.conf`:**
+```
+KEYMAP=fr
+```
+
+#### Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `kbd` | `loadkeys` command and keyboard utilities |
+| `keymaps` | Keyboard layout definition files (including `fr`) |
+
+#### How It Works
+
+With `systemd` as init manager, `systemd-vconsole-setup.service` reads `/etc/vconsole.conf` at boot and calls `loadkeys fr` to set the console keyboard layout.
 
 ---
 

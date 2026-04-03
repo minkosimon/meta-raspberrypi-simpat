@@ -6,10 +6,11 @@ This document provides comprehensive documentation for the `meta-raspberrypi-sim
 
 ## Overview
 
-The layer provides **2 core classes** that work together to support multiple deployment scenarios:
+The layer provides **3 core classes** that work together to support multiple deployment scenarios:
 
 1. **`image-support`** - Base class for all image types (SD Card + TFTP)
 2. **`support-img-type`** - Image type-specific configuration (SD Card only)
+3. **`users-management`** - JSON-driven centralized user, group, SSH key and shell management
 
 ### Class Relationships
 
@@ -17,23 +18,35 @@ The layer provides **2 core classes** that work together to support multiple dep
 graph TD
     A["<b>image-support</b><br/>(Base Class)"]
     B["<b>support-img-type</b><br/>(SD Card Specific)"]
+    UM["<b>users-management</b><br/>(User/Group/SSH/Shell)"]
     C["<b>SD Card Recipes</b><br/>(3 flavors)"]
     D["<b>TFTP Recipes</b><br/>(3 flavors)"]
+    E["<b>user-management</b><br/>Recipe"]
     
     A -->|"inherits"| B
     B -->|"used by"| C
     A -->|"used by"| C
     A -->|"used by"| D
+    UM -->|"inherited by"| E
+    E -->|"included in"| C
+    E -->|"included in"| D
     
-    A -.->|auto-detects| E["SUPPORT_BOOT"]
-    E -->|"sdcard"| B
-    E -->|"tftp"| D
+    A -.->|auto-detects| F["SUPPORT_BOOT"]
+    F -->|"sdcard"| B
+    F -->|"tftp"| D
+    
+    UM -.->|reads| G["JSON Config"]
+    G -.->|defines| H["Users, Groups,<br/>SSH Keys, Shell"]
     
     style A fill:#e1f5ff
     style B fill:#fff9c4
+    style UM fill:#e8f5e9
     style C fill:#f1f8e9
     style D fill:#ffe0b2
-    style E fill:#f3e5f5
+    style E fill:#c8e6c9
+    style F fill:#f3e5f5
+    style G fill:#fff3e0
+    style H fill:#fff3e0
 ```
 
 ---
@@ -346,6 +359,195 @@ INITRAMFS_IMAGE = "core-image-minimal-initramfs"
 
 ---
 
+## 3. `users-management` bbclass
+
+**File Location:** `classes/users-management.bbclass`
+
+**Purpose:** Provides JSON-driven centralized management of users, groups, SSH keys, shell configuration (`.bashrc`, `.bash_profile`) and password provisioning for all image recipes.
+
+### Architecture
+
+```mermaid
+graph LR
+    JSON["📄 users-groups-management.json"]
+    CLASS["🔧 users-management.bbclass"]
+    RECIPE["📦 user-management recipe<br/>(sets USER_JSON_FILE)"]
+    USERADD["⚙️ useradd bbclass<br/>(inherited)"]
+    TARGET["🖥️ Target Image"]
+
+    JSON -->|read at parse-time| CLASS
+    CLASS -->|inherits| USERADD
+    RECIPE -->|inherits| CLASS
+    RECIPE -->|IMAGE_INSTALL| TARGET
+
+    CLASS -->|"_users_mgmt_parse(d, 'groupadd')"| G["groupadd -r admin ; groupadd -r application"]
+    CLASS -->|"_users_mgmt_parse(d, 'useradd')"| U["useradd -m -p '...' -G groups -s /bin/bash user"]
+    CLASS -->|"do_install_ssh_keys()"| S["Deploy SSH keys,<br/>.bashrc, .bash_profile"]
+
+    G --> TARGET
+    U --> TARGET
+    S --> TARGET
+
+    style JSON fill:#fff3e0
+    style CLASS fill:#e8f5e9
+    style RECIPE fill:#c8e6c9
+    style USERADD fill:#e1f5ff
+    style TARGET fill:#f3e5f5
+```
+
+### Responsibilities
+
+- **Group Creation:** Reads groups from JSON and generates `GROUPADD_PARAM` commands
+- **User Creation:** Reads users from JSON and generates `USERADD_PARAM` commands with password, groups, and shell
+- **Password Hash Escaping:** Escapes `$` signs in SHA-512 hashes to survive BitBake → shell double-quote expansion
+- **SSH Key Deployment:** Copies private/public SSH keys and `authorized_keys` files to user home directories
+- **Shell Configuration:** Deploys `.bashrc` and `.bash_profile` files per user
+- **Group Validation:** Fails build if a user references a group not declared in the `groups` array
+
+### JSON Configuration Schema
+
+The class reads a JSON file specified by `USER_JSON_FILE`. Structure:
+
+```json
+{
+  "groups": ["admin", "application"],
+  "users": [
+    {
+      "name": "simon",
+      "password": "$6$salt$hash...",
+      "groups": ["admin", "application"],
+      "ssh_key": ["path/to/id_ed25519", "path/to/id_ed25519.pub"],
+      "authorized_key": "path/to/authorized_keys",
+      "bashrc": "path/to/.bashrc",
+      "bash_profile": "path/to/.bash_profile"
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `groups` | `string[]` | Yes | System groups to create with `groupadd -r` |
+| `users[].name` | `string` | Yes | Username |
+| `users[].password` | `string` | Yes | SHA-512 password hash (from `openssl passwd -6`) |
+| `users[].groups` | `string[]` | Yes | Groups the user belongs to (must exist in `groups`) |
+| `users[].ssh_key` | `string \| string[]` | No | Path(s) to SSH key files (private and/or public) |
+| `users[].authorized_key` | `string` | No | Path to `authorized_keys` file |
+| `users[].bashrc` | `string` | No | Path to `.bashrc` file to deploy to user's home |
+| `users[].bash_profile` | `string` | No | Path to `.bash_profile` file to deploy to user's home |
+
+### Key Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `USER_JSON_FILE` | Absolute path to JSON config (set by the recipe) |
+| `USERADD_PACKAGES` | Set to `${PN}` (auto) |
+| `GROUPADD_PACKAGES` | Set to `${PN}` (auto) |
+| `USERADD_PARAM:${PN}` | Generated by `_users_mgmt_parse(d, 'useradd')` |
+| `GROUPADD_PARAM:${PN}` | Generated by `_users_mgmt_parse(d, 'groupadd')` |
+| `RDEPENDS:${PN}` | `openssh` |
+
+### Python Functions
+
+#### `_users_mgmt_parse(d, section)`
+
+Core parse-time function that reads JSON and generates BitBake variable content.
+
+| Section | Output | Example |
+|---------|--------|---------|
+| `"groupadd"` | `GROUPADD_PARAM` commands | `"-r admin ; -r application"` |
+| `"useradd"` | `USERADD_PARAM` commands | `"-m -p 'escaped_hash' -G admin,application -s /bin/bash simon"` |
+| `"ssh"` | SSH key data (internal use) | `"simon\|ssh-ed25519 AAAA..."` |
+
+**Password Escaping:** The `$` characters in SHA-512 hashes (`$6$salt$hash`) are replaced with `\$` to prevent shell variable expansion during BitBake's `useradd` execution:
+
+```python
+escaped_password = password.replace("$", r'\$')
+```
+
+**Group Validation:** If a user references a group not in the `groups` array, the build fails with `bb.fatal()`.
+
+#### `do_install_ssh_keys()` Task
+
+**Runs:** After `do_install`, before `do_package`
+
+**Task configuration:**
+```bitbake
+do_install_ssh_keys[nostamp] = "1"
+addtask do_install_ssh_keys after do_install before do_package
+```
+
+**Actions for each user:**
+
+```mermaid
+graph TD
+    START["do_install_ssh_keys()"] --> READ["Read JSON config"]
+    READ --> LOOP["For each user"]
+    
+    LOOP --> MKDIR["Create ~/.ssh/<br/>mode 0700"]
+    MKDIR --> KEYS{"ssh_key<br/>defined?"}
+    KEYS -->|Yes| COPYKEYS["Copy key files<br/>private: 0600<br/>public: 0644"]
+    KEYS -->|No| AUTH
+    COPYKEYS --> AUTH{"authorized_key<br/>defined?"}
+    AUTH -->|Yes| COPYAUTH["Copy authorized_keys<br/>mode 0600"]
+    AUTH -->|No| BASHRC
+    COPYAUTH --> BASHRC{"bashrc<br/>defined?"}
+    BASHRC -->|Yes| COPYBASHRC["Copy .bashrc<br/>mode 0644"]
+    BASHRC -->|No| PROFILE
+    COPYBASHRC --> PROFILE{"bash_profile<br/>defined?"}
+    PROFILE -->|Yes| COPYPROFILE["Copy .bash_profile<br/>mode 0644"]
+    PROFILE -->|No| NEXT["Next user"]
+    COPYPROFILE --> NEXT
+    NEXT --> LOOP
+    
+    style START fill:#e1f5ff
+    style COPYKEYS fill:#c8e6c9
+    style COPYAUTH fill:#c8e6c9
+    style COPYBASHRC fill:#c8e6c9
+    style COPYPROFILE fill:#c8e6c9
+```
+
+### File Permissions Summary
+
+| File | Mode | Description |
+|------|------|-------------|
+| `~/.ssh/` | `0700` | SSH directory |
+| `~/.ssh/id_*` (private) | `0600` | Private SSH keys |
+| `~/.ssh/id_*.pub` | `0644` | Public SSH keys |
+| `~/.ssh/authorized_keys` | `0600` | Authorized keys |
+| `~/.bashrc` | `0644` | Bash runtime config |
+| `~/.bash_profile` | `0644` | Bash login profile |
+
+### Usage Example
+
+A recipe using this class:
+
+```bitbake
+SUMMARY = "User management recipe"
+LICENSE = "MIT"
+
+inherit users-management
+
+USER_JSON_FILE = "${THISDIR}/files/users-groups-management.json"
+
+# SSH key files referenced in JSON must be in SRC_URI or accessible paths
+SRC_URI = "file://users-groups-management.json \
+           file://simon/ \
+           file://guest/"
+```
+
+### Generating Password Hashes
+
+```bash
+# Generate SHA-512 password hash for use in JSON
+openssl passwd -6 "mypassword"
+# Output: $6$randomsalt$longhash...
+```
+
+⚠️ **Important:** The `$` characters in the hash are automatically escaped by the class. Put the raw output of `openssl passwd -6` directly into the JSON file.
+
+---
+
 ## Class Interaction Patterns
 
 ### Pattern 1: SD Card Image Build
@@ -522,4 +724,5 @@ ls -la /tmp/srv/tftp/
 - [README-RECIPE.md](../recipes-core/images/README-RECIPE.md) - Image recipe documentation
 - [README.md](../README.md) - Main layer documentation
 - WKS files in `wic/` directory
+- JSON config: `recipes-user-management/user-management/files/users-groups-management.json`
 
