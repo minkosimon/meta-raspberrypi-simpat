@@ -9,4 +9,5 @@ SRC_URI:append = " file://fstab"
 do_install:append() {
     # Use our custom NFS-optimized fstab
     install -m 0644 ${WORKDIR}/fstab ${D}${sysconfdir}/fstab
+
 }

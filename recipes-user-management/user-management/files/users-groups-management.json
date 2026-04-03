@@ -1,0 +1,26 @@
+{
+  "groups": ["admin", "application"],
+  "users": [
+    {
+      "name": "simon",
+      "password": "$6$oI0.Xz6qXrioCZGm$w8VtavtNKw/sIoKhl7v3BB5pUsP2xg8xS19LHMIqtRJO/QNi0uH1YCdkdSM3zrXv70jetVGLKJBTZc4GC1uOq/",
+      "groups": ["admin","application"],
+      "ssh_key": ["/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/simon/id_ed25519",
+                  "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/simon/id_ed25519.pub"],
+      "authorized_key" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/simon/authorized_keys",
+      "bashrc" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/simon/.bashrc",
+      "bash_profile" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/simon/.bash_profile"
+
+    },
+    {
+      "name": "guest",
+      "password": "$6$Jy7xgunUGs5C41Kz$jyLlci045Y7crbfDQrrJe3n4Vi5AYXC0eWM8jamMmfxpTEgxFudktFQ7WiHsFzgFNm8XmWzdf8R1mYhFrr4md1",
+      "groups": ["admin","application"],
+      "ssh_key": ["/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/guest/id_ed25519",
+                  "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/guest/id_ed25519.pub"],
+      "authorized_key" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/guest/authorized_keys",
+      "bashrc" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/guest/.bashrc",
+      "bash_profile" : "/var/embedded-dev/YOCTO/PROJET-RPI-5/sources/meta-raspberrypi-simpat/recipes-user-management/user-management/files/guest/.bash_profile"
+    }
+  ]
+}

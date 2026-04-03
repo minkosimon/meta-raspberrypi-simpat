@@ -50,12 +50,14 @@ IMAGE_INSTALL:append = " \
     base-files \
     base-passwd \
     netbase \
+    bash \
     openssh \
     openssh-sftp-server \
     linux-firmware-rpidistro-bcm43455 \
     bluez-firmware-rpidistro-bcm4345c0-hcd \
     systemd-nfsboot-config \
     simpat-network-config \
+    user-management \
 "
 
 # ============================================================================
