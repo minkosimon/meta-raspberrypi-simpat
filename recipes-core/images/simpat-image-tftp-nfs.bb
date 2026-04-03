@@ -58,6 +58,7 @@ IMAGE_INSTALL:append = " \
     systemd-nfsboot-config \
     simpat-network-config \
     user-management \
+    console-keymap \
 "
 
 # ============================================================================
