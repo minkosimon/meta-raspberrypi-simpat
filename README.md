@@ -36,6 +36,8 @@ This layer's documentation is organized into four levels:
    - [recipes-network/simpat-network-config/DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md) - Fonctionnement complet de la recette `simpat-network-config`
    - [recipes-network/simpat-network-config/SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md) - Résumé du système de configuration réseau
    - [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md) - Cas d'usage pratiques (DHCP, IP statique, VLAN, bridge, bond)
+5. **Freenove Kit Drivers:**
+   - [recipes-freenove/blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md) - GPIO17 blue LED blink driver (platform driver + DT overlay + gpiod API)
 
 ### Documentation Navigation Map
 
@@ -310,6 +312,7 @@ flowchart TD
 | **[DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)** | Configuration réseau systemd-networkd | Network developers |
 | **[SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md)** | Résumé du système réseau | Everyone |
 | **[USECASES.md](recipes-network/simpat-network-config/USECASES.md)** | Cas d'usage réseau (VLAN, bridge, bond) | Network developers |
+| **[blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md)** | GPIO17 LED driver (gpiod + DT overlay) | Driver developers |
 
 ---
 
@@ -353,5 +356,6 @@ The `meta-raspberrypi-simpat` layer provides a clean, maintainable approach to b
 👉 Network config: [recipes-network/simpat-network-config/DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)  
 👉 Network use cases: [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md)  
 👉 WKS templates: See `wic/` directory  
+👉 Freenove LED driver: [recipes-freenove/blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md)  
 👉 Main project: [README.md](README.md)
 
