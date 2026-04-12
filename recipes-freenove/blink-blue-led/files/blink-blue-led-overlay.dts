@@ -1,0 +1,17 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2712";
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			blink_blue_led: blink-blue-led {
+				compatible = "simpat,blink-blue-led";
+				led-gpios = <&gpio 17 0>;  /* GPIO17, active high */
+				status = "okay";
+			};
+		};
+	};
+};

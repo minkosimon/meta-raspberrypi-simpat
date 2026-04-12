@@ -60,6 +60,8 @@ IMAGE_INSTALL:append = " \
     user-management \
     console-keymap \
     helloworld \
+    dummy-driver-char \
+    blink-blue-led \
 "
 
 # ============================================================================
@@ -71,4 +73,12 @@ VIRTUAL-RUNTIME_initcalls = ""
 
 # SSH server for remote management
 EXTRA_IMAGE_FEATURES:append = " ssh-server-openssh"
+
+# ============================================================================
+# Custom DT overlays — deploy to TFTP alongside kernel overlays
+# Auto-enabled when the matching package is in IMAGE_INSTALL
+# ============================================================================
+IMAGE_BOOT_FILES:append = " ${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-led', 'blink-blue-led.dtbo;overlays/blink-blue-led.dtbo', '', d)}"
+do_image_wic[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-led', 'blink-blue-led:do_deploy', '', d)}"
+do_tftp_nfs_deploy[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-led', 'blink-blue-led:do_deploy', '', d)}"
 
