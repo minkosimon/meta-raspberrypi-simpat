@@ -1,0 +1,638 @@
+/**
+ * Freenove FNK0054 Test Dashboard — React Application
+ *
+ * Architecture:
+ *   React Frontend  <─ WebSocket (8080) ─>  Python Backend  <─ SSH ─>  Board
+ */
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ===================================================================
+ *  WebSocket hook
+ * =================================================================== */
+function useWebSocket(url) {
+  const wsRef   = useRef(null);
+  const idRef   = useRef(0);
+  const cbMap   = useRef({});
+  const [ready, setReady] = useState(false);
+
+  const connect = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState <= 1) return;
+    const ws = new WebSocket(url);
+    ws.onopen  = () => setReady(true);
+    ws.onclose = () => setReady(false);
+    ws.onerror = () => ws.close();
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        const cb = cbMap.current[msg.id];
+        if (cb) { cb(msg); delete cbMap.current[msg.id]; }
+      } catch {}
+    };
+    wsRef.current = ws;
+  }, [url]);
+
+  const disconnect = useCallback(() => {
+    if (wsRef.current) wsRef.current.close();
+  }, []);
+
+  const send = useCallback((action, params = {}) => {
+    return new Promise((resolve) => {
+      if (!wsRef.current || wsRef.current.readyState !== 1) {
+        resolve({ status: 'error', message: 'not connected' });
+        return;
+      }
+      const id = String(++idRef.current);
+      cbMap.current[id] = resolve;
+      wsRef.current.send(JSON.stringify({ id, action, params }));
+      setTimeout(() => {
+        if (cbMap.current[id]) {
+          cbMap.current[id]({ status: 'error', message: 'timeout' });
+          delete cbMap.current[id];
+        }
+      }, 30000);
+    });
+  }, []);
+
+  return { ready, connect, disconnect, send };
+}
+
+/* ===================================================================
+ *  CONNECTION PANEL (header)
+ * =================================================================== */
+function ConnectionBar({ ws, sshConnected, setSshConnected }) {
+  const [host, setHost]     = useState('192.168.10.22');
+  const [user, setUser]     = useState('root');
+  const [pass, setPass]     = useState('');
+  const [busy, setBusy]     = useState(false);
+
+  const handleSSH = async () => {
+    setBusy(true);
+    if (sshConnected) {
+      await ws.send('disconnect');
+      setSshConnected(false);
+    } else {
+      const res = await ws.send('connect', { host, user, password: pass || undefined });
+      if (res.status === 'ok') setSshConnected(true);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="conn-bar">
+      <span className={`status-dot ${ws.ready ? 'on' : 'off'}`} />
+      <span style={{fontSize:'.82rem',color: ws.ready ? '#22c55e':'#ef4444'}}>
+        WS {ws.ready ? 'OK' : 'OFF'}
+      </span>
+      {!ws.ready
+        ? <button className="btn sm" onClick={ws.connect}>Connecter WS</button>
+        : <button className="btn sm danger" onClick={ws.disconnect}>Déconnecter WS</button>
+      }
+      <span style={{margin:'0 6px', color:'var(--border)'}}>|</span>
+      <input placeholder="IP carte" value={host} onChange={e=>setHost(e.target.value)} />
+      <input placeholder="Utilisateur" value={user} onChange={e=>setUser(e.target.value)} style={{width:100}} />
+      <input placeholder="Mot de passe" type="password" value={pass} onChange={e=>setPass(e.target.value)} style={{width:120}} />
+      <button className={`btn sm ${sshConnected?'danger':'success'}`} onClick={handleSSH} disabled={!ws.ready||busy}>
+        {sshConnected ? 'Déconnecter SSH' : 'Connecter SSH'}
+      </button>
+      <span className={`status-dot ${sshConnected ? 'on' : 'off'}`} />
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  GPIO PANEL
+ * =================================================================== */
+function GpioPanel({ ws, disabled }) {
+  const pins = [4,5,6,12,13,16,17,18,19,20,21,22,23,24,25,26,27];
+  const [states, setStates]   = useState({});
+  const [output, setOutput]   = useState('');
+
+  const toggle = async (pin) => {
+    const cur = states[pin] || 0;
+    const nv  = cur ? 0 : 1;
+    const res = await ws.send('gpio_write', { pin, value: nv });
+    if (res.status === 'ok') {
+      setStates(s => ({...s, [pin]: nv}));
+      setOutput(JSON.stringify(res.data, null, 2));
+    } else {
+      setOutput(JSON.stringify(res, null, 2));
+    }
+  };
+
+  const readPin = async (pin) => {
+    const res = await ws.send('gpio_read', { pin });
+    if (res.status === 'ok') {
+      try {
+        const d = JSON.parse(res.data.stdout);
+        setStates(s => ({...s, [pin]: d.value}));
+      } catch {}
+    }
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">💡</span> GPIO Control</div>
+      <div className="card-body">
+        <div className="gpio-grid">
+          {pins.map(p => (
+            <div key={p}
+                 className={`gpio-pin ${states[p] ? 'active' : ''}`}
+                 onClick={() => !disabled && toggle(p)}
+                 onContextMenu={e => { e.preventDefault(); !disabled && readPin(p); }}>
+              <span className="pin-num">GPIO {p}</span>
+              <span className="pin-state">{states[p] ? 'HIGH' : 'LOW'}</span>
+            </div>
+          ))}
+        </div>
+        <p style={{fontSize:'.75rem',color:'var(--text-dim)',marginTop:8}}>
+          Clic = toggle ON/OFF &nbsp;|&nbsp; Clic droit = lire état
+        </p>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  PWM PANEL
+ * =================================================================== */
+function PwmPanel({ ws, disabled }) {
+  const [pin, setPin]   = useState(18);
+  const [freq, setFreq] = useState(1000);
+  const [duty, setDuty] = useState(50);
+  const [output, setOutput] = useState('');
+
+  const start = async () => {
+    const res = await ws.send('pwm_start', { pin, frequency: freq, duty });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+  const stop = async () => {
+    const res = await ws.send('pwm_stop', { pin });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">〰️</span> PWM Control</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Pin</label>
+            <select value={pin} onChange={e=>setPin(+e.target.value)}>
+              {[12,13,18,19].map(p=><option key={p} value={p}>GPIO {p}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Fréquence (Hz)</label>
+            <input type="number" min="1" max="50000" value={freq} onChange={e=>setFreq(+e.target.value)} />
+          </div>
+        </div>
+        <div className="field" style={{marginTop:10}}>
+          <label>Duty Cycle: {duty}%</label>
+          <input type="range" min="0" max="100" value={duty} onChange={e=>setDuty(+e.target.value)} />
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:10}}>
+          <button className="btn success" onClick={start} disabled={disabled}>▶ Start</button>
+          <button className="btn danger" onClick={stop} disabled={disabled}>⏹ Stop</button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  SERVO PANEL
+ * =================================================================== */
+function ServoPanel({ ws, disabled }) {
+  const [pin, setPin]     = useState(18);
+  const [angle, setAngle] = useState(90);
+  const [output, setOutput] = useState('');
+
+  const send = async () => {
+    const res = await ws.send('servo_set', { pin, angle });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🔄</span> Servo Moteur (SG90)</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Pin</label>
+            <select value={pin} onChange={e=>setPin(+e.target.value)}>
+              {[12,13,18,19].map(p=><option key={p} value={p}>GPIO {p}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="field" style={{marginTop:10}}>
+          <label>Angle: {angle}°</label>
+          <input type="range" min="0" max="180" value={angle} onChange={e=>setAngle(+e.target.value)} />
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:6}}>
+          {[0,45,90,135,180].map(a => (
+            <button key={a} className="btn sm" onClick={()=>setAngle(a)}>{a}°</button>
+          ))}
+        </div>
+        <button className="btn" onClick={send} disabled={disabled} style={{marginTop:10,width:'100%'}}>
+          Appliquer {angle}°
+        </button>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  LED RGB PANEL
+ * =================================================================== */
+function LedRgbPanel({ ws, disabled }) {
+  const [r, setR] = useState(0);
+  const [g, setG] = useState(0);
+  const [b, setB] = useState(0);
+  const [output, setOutput] = useState('');
+
+  const send = async () => {
+    const res = await ws.send('led_rgb', { r_pin:17, g_pin:27, b_pin:22, r, g, b });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🌈</span> LED RGB</div>
+      <div className="card-body">
+        <div className="color-preview" style={{background:`rgb(${r},${g},${b})`}} />
+        <div className="field">
+          <label>Rouge: {r}</label>
+          <input type="range" min="0" max="255" value={r}
+            onChange={e=>setR(+e.target.value)} style={{'--accent':'#ef4444'}} />
+        </div>
+        <div className="field">
+          <label>Vert: {g}</label>
+          <input type="range" min="0" max="255" value={g}
+            onChange={e=>setG(+e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Bleu: {b}</label>
+          <input type="range" min="0" max="255" value={b}
+            onChange={e=>setB(+e.target.value)} />
+        </div>
+        <button className="btn" onClick={send} disabled={disabled} style={{width:'100%'}}>
+          Appliquer couleur
+        </button>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  I2C SCANNER PANEL
+ * =================================================================== */
+function I2cPanel({ ws, disabled }) {
+  const [bus, setBus]       = useState(1);
+  const [output, setOutput] = useState('');
+
+  const scan = async () => {
+    setOutput('Scan en cours...');
+    const res = await ws.send('i2c_scan', { bus });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🔍</span> I2C Scanner</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Bus I2C</label>
+            <select value={bus} onChange={e=>setBus(+e.target.value)}>
+              <option value={0}>i2c-0</option>
+              <option value={1}>i2c-1</option>
+            </select>
+          </div>
+          <button className="btn" onClick={scan} disabled={disabled}>Scanner</button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  ADC PANEL
+ * =================================================================== */
+function AdcPanel({ ws, disabled }) {
+  const [channel, setChannel] = useState(0);
+  const [output, setOutput]   = useState('');
+  const [polling, setPolling] = useState(false);
+  const timerRef = useRef(null);
+
+  const readOnce = async () => {
+    const res = await ws.send('adc_read', { channel });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  const togglePoll = () => {
+    if (polling) {
+      clearInterval(timerRef.current);
+      setPolling(false);
+    } else {
+      setPolling(true);
+      timerRef.current = setInterval(readOnce, 1000);
+    }
+  };
+
+  useEffect(() => () => clearInterval(timerRef.current), []);
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">📊</span> ADC (ADS7830)</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Canal</label>
+            <select value={channel} onChange={e=>setChannel(+e.target.value)}>
+              {[0,1,2,3,4,5,6,7].map(c=><option key={c} value={c}>CH{c}</option>)}
+            </select>
+          </div>
+          <button className="btn" onClick={readOnce} disabled={disabled}>Lire</button>
+          <button className={`btn ${polling?'danger':'success'}`} onClick={togglePoll} disabled={disabled}>
+            {polling ? '⏹ Stop' : '▶ Auto'}
+          </button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  DHT11 PANEL
+ * =================================================================== */
+function DhtPanel({ ws, disabled }) {
+  const [pin, setPin]       = useState(17);
+  const [output, setOutput] = useState('');
+
+  const read = async () => {
+    setOutput('Lecture DHT11...');
+    const res = await ws.send('dht_read', { pin });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🌡️</span> Capteur DHT11</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Pin données</label>
+            <input type="number" min="0" max="27" value={pin} onChange={e=>setPin(+e.target.value)} />
+          </div>
+          <button className="btn" onClick={read} disabled={disabled}>Lire</button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  ULTRASONIC PANEL
+ * =================================================================== */
+function UltrasonicPanel({ ws, disabled }) {
+  const [trig, setTrig]     = useState(23);
+  const [echo, setEcho]     = useState(24);
+  const [output, setOutput] = useState('');
+
+  const read = async () => {
+    setOutput('Mesure en cours...');
+    const res = await ws.send('ultrasonic_read', { trig_pin: trig, echo_pin: echo });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">📏</span> Ultrason HC-SR04</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Trig</label>
+            <input type="number" min="0" max="27" value={trig} onChange={e=>setTrig(+e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Echo</label>
+            <input type="number" min="0" max="27" value={echo} onChange={e=>setEcho(+e.target.value)} />
+          </div>
+          <button className="btn" onClick={read} disabled={disabled}>Mesurer</button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  BUZZER PANEL
+ * =================================================================== */
+function BuzzerPanel({ ws, disabled }) {
+  const [pin, setPin]   = useState(25);
+  const [freq, setFreq] = useState(440);
+  const [dur, setDur]   = useState(0.5);
+  const [output, setOutput] = useState('');
+
+  const tone = async () => {
+    const res = await ws.send('buzzer', { pin, state:'tone', frequency:freq, duration:dur });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+  const off = async () => {
+    const res = await ws.send('buzzer', { pin, state:'off' });
+    setOutput(JSON.stringify(res.data, null, 2));
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🔔</span> Buzzer</div>
+      <div className="card-body">
+        <div className="field-row">
+          <div className="field">
+            <label>Pin</label>
+            <input type="number" min="0" max="27" value={pin} onChange={e=>setPin(+e.target.value)} style={{width:70}} />
+          </div>
+          <div className="field">
+            <label>Fréquence (Hz)</label>
+            <input type="number" min="20" max="20000" value={freq} onChange={e=>setFreq(+e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Durée (s)</label>
+            <input type="number" min="0.1" max="10" step="0.1" value={dur} onChange={e=>setDur(+e.target.value)} />
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:10}}>
+          <button className="btn success" onClick={tone} disabled={disabled}>🔊 Jouer ton</button>
+          <button className="btn danger" onClick={off} disabled={disabled}>🔇 Stop</button>
+        </div>
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  SYSTEM INFO PANEL
+ * =================================================================== */
+function SystemInfoPanel({ ws, disabled }) {
+  const [info, setInfo]     = useState(null);
+  const [output, setOutput] = useState('');
+
+  const refresh = async () => {
+    setOutput('Chargement...');
+    const res = await ws.send('system_info');
+    setOutput(JSON.stringify(res.data, null, 2));
+    if (res.status === 'ok' && res.data.stdout) {
+      try { setInfo(JSON.parse(res.data.stdout)); } catch {}
+    }
+  };
+
+  const fmtUptime = (s) => {
+    if (!s || s < 0) return '—';
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    return `${h}h ${m}m`;
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">🖥️</span> Informations Système</div>
+      <div className="card-body">
+        <button className="btn" onClick={refresh} disabled={disabled} style={{marginBottom:10}}>
+          Rafraîchir
+        </button>
+        {info && (
+          <div className="sys-grid">
+            <div className="sys-item">
+              <div className="label">Hostname</div>
+              <div className="value">{info.hostname}</div>
+            </div>
+            <div className="sys-item">
+              <div className="label">Kernel</div>
+              <div className="value" style={{fontSize:'.85rem'}}>{info.kernel}</div>
+            </div>
+            <div className="sys-item">
+              <div className="label">CPU Temp</div>
+              <div className="value" style={{color: info.cpu_temp_c > 70 ? '#ef4444' : '#22c55e'}}>
+                {info.cpu_temp_c}°C
+              </div>
+            </div>
+            <div className="sys-item">
+              <div className="label">Uptime</div>
+              <div className="value">{fmtUptime(info.uptime_s)}</div>
+            </div>
+            <div className="sys-item">
+              <div className="label">Architecture</div>
+              <div className="value">{info.arch}</div>
+            </div>
+            <div className="sys-item">
+              <div className="label">Disque libre</div>
+              <div className="value">{info.disk ? `${info.disk.free_mb} MB` : '—'}</div>
+            </div>
+          </div>
+        )}
+        {output && <div className="output">{output}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  TERMINAL PANEL
+ * =================================================================== */
+function TerminalPanel({ ws, disabled }) {
+  const [cmd, setCmd]       = useState('');
+  const [history, setHistory] = useState([]);
+
+  const run = async () => {
+    if (!cmd.trim()) return;
+    setHistory(h => [...h, `$ ${cmd}`]);
+    const res = await ws.send('run_command', { command: cmd });
+    if (res.status === 'ok' && res.data) {
+      if (res.data.stdout) setHistory(h => [...h, res.data.stdout]);
+      if (res.data.stderr) setHistory(h => [...h, `[stderr] ${res.data.stderr}`]);
+    } else {
+      setHistory(h => [...h, `[error] ${res.message || JSON.stringify(res)}`]);
+    }
+    setCmd('');
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="icon">⌨️</span> Terminal SSH</div>
+      <div className="card-body">
+        <div className="output" style={{minHeight:120}}>
+          {history.length === 0
+            ? 'Entrez une commande à exécuter sur la carte...'
+            : history.join('\n')}
+        </div>
+        <div className="terminal-input">
+          <input value={cmd} onChange={e=>setCmd(e.target.value)}
+            placeholder="Commande SSH..."
+            onKeyDown={e => e.key === 'Enter' && !disabled && run()}
+            disabled={disabled} />
+          <button className="btn" onClick={run} disabled={disabled}>Exécuter</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+ *  MAIN APP
+ * =================================================================== */
+function App() {
+  const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws`;
+  const ws = useWebSocket(wsUrl);
+  const [sshConnected, setSshConnected] = useState(false);
+  const disabled = !ws.ready || !sshConnected;
+
+  return (
+    <div>
+      <header className="app-header">
+        <h1>🧪 Freenove <span>FNK0054</span> — Test Dashboard</h1>
+        <ConnectionBar ws={ws} sshConnected={sshConnected} setSshConnected={setSshConnected} />
+      </header>
+
+      {!ws.ready && (
+        <div style={{textAlign:'center',padding:40,color:'var(--text-dim)'}}>
+          <p style={{fontSize:'1.2rem',marginBottom:12}}>⚡ Connexion au backend requise</p>
+          <button className="btn" onClick={ws.connect}>Se connecter au WebSocket</button>
+        </div>
+      )}
+
+      {ws.ready && !sshConnected && (
+        <div style={{textAlign:'center',padding:20,color:'var(--orange)',fontSize:'.9rem'}}>
+          ⚠️ Connectez-vous en SSH à la carte pour activer les contrôles
+        </div>
+      )}
+
+      <main className="dashboard">
+        <GpioPanel ws={ws} disabled={disabled} />
+        <PwmPanel ws={ws} disabled={disabled} />
+        <ServoPanel ws={ws} disabled={disabled} />
+        <LedRgbPanel ws={ws} disabled={disabled} />
+        <I2cPanel ws={ws} disabled={disabled} />
+        <AdcPanel ws={ws} disabled={disabled} />
+        <DhtPanel ws={ws} disabled={disabled} />
+        <UltrasonicPanel ws={ws} disabled={disabled} />
+        <BuzzerPanel ws={ws} disabled={disabled} />
+        <SystemInfoPanel ws={ws} disabled={disabled} />
+        <TerminalPanel ws={ws} disabled={disabled} />
+      </main>
+    </div>
+  );
+}
+
+/* Mount */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));

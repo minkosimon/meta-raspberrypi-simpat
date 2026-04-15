@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Freenove FNK0054 — Test Dashboard (PREVIEW)</title>
+  <link rel="stylesheet" href="style.css?v=4" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    // Mock WebSocket hook for preview mode (no backend needed)
+    window.__PREVIEW_MODE__ = true;
+  </script>
+  <script src="app-preview.js?v=4"></script>
+</body>
+</html>
