@@ -59,9 +59,7 @@ IMAGE_INSTALL:append = " \
     simpat-network-config \
     user-management \
     console-keymap \
-    helloworld \
-    dummy-driver-char \
-    blink-blue-led \
+    frontend-backend-freenove \
 "
 
 # ============================================================================
@@ -82,3 +80,8 @@ IMAGE_BOOT_FILES:append = " ${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-le
 do_image_wic[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-led', 'blink-blue-led:do_deploy', '', d)}"
 do_tftp_nfs_deploy[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'blink-blue-led', 'blink-blue-led:do_deploy', '', d)}"
 
+# ============================================================================
+# Ensure the custom DT overlay is included in the TFTP deployment
+IMAGE_BOOT_FILES:append = " ${@bb.utils.contains('IMAGE_INSTALL', 'frontend-backend-freenove', 'freenove-overlay.dtbo;overlays/freenove-overlay.dtbo', '', d)}"
+do_image_wic[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'frontend-backend-freenove', 'frontend-backend-freenove:do_deploy', '', d)}"
+do_tftp_nfs_deploy[depends] += "${@bb.utils.contains('IMAGE_INSTALL', 'frontend-backend-freenove', 'frontend-backend-freenove:do_deploy', '', d)}"

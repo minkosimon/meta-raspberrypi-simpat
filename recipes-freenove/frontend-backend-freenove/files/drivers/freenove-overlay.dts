@@ -1,0 +1,25 @@
+/dts-v1/;
+/plugin/;
+
+/{
+    compatible = "brcm,bcm2712";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            freenove_board: freenove_board {
+                compatible = "simpat,freenove-driver";
+                leds-gpios = <&gpio 4 0>, <&gpio 5 0>,
+                        <&gpio 6 0>, <&gpio 12 0>,
+                        <&gpio 13 0>, <&gpio 17 0>,
+                        <&gpio 18 0>, <&gpio 22 0>,
+                        <&gpio 23 0>, <&gpio 24 0>,
+                        <&gpio 25 0>, <&gpio 26 0>,
+                        <&gpio 27 0>;
+                delay-on = <500>;
+                delay-off = <250>;
+                status = "okay";
+            };
+        };
+    };
+};

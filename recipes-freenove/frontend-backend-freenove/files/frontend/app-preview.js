@@ -1,52 +1,41 @@
 /**
- * Freenove Projects Board for Raspberry Pi — Dashboard (PREVIEW MODE)
- * All components from the FNK0054 board.
- * Simulates WebSocket responses with mock data (no backend needed).
+ * Freenove Projects Board for Raspberry Pi — Dashboard
+ * Browser-ready bundle without JSX build step.
  */
 const { useState, useEffect, useRef, useCallback } = React;
 const h = React.createElement;
 
 /* ===================================================================
- *  MOCK WebSocket hook
+ *  WebSocket hook
  * =================================================================== */
-function useMockWebSocket() {
+function useWebSocket(url) {
   const [ready, setReady] = useState(false);
-  const [sshOk, setSshOk] = useState(false);
-  const connect    = useCallback(() => setReady(true), []);
-  const disconnect = useCallback(() => { setReady(false); setSshOk(false); }, []);
+  const wsRef = useRef(null);
+  const idRef = useRef(0);
+  const cbMap = useRef({});
 
-  const MOCK = {
-    connect:      () => { setSshOk(true); return { status:'connected', host:'192.168.10.22' }; },
-    disconnect:   () => { setSshOk(false); return { status:'disconnected' }; },
-    gpio_write:   (p) => ({ stdout: JSON.stringify({ pin:p.pin, value:p.value }) }),
-    gpio_read:    (p) => ({ stdout: JSON.stringify({ pin:p.pin, value:Math.round(Math.random()) }) }),
-    pwm_start:    (p) => ({ stdout: JSON.stringify({ pin:p.pin, frequency:p.frequency, duty:p.duty, state:'running' }) }),
-    pwm_stop:     (p) => ({ stdout: JSON.stringify({ pin:p.pin, state:'stopped' }) }),
-    servo_set:    (p) => ({ stdout: JSON.stringify({ pin:p.pin, angle:p.angle }) }),
-    led_rgb:      (p) => ({ stdout: JSON.stringify({ r:p.r, g:p.g, b:p.b }) }),
-    i2c_scan:     ()  => ({ stdout: JSON.stringify({ devices:[{address:75,hex:'0x4b'},{address:39,hex:'0x27'},{address:104,hex:'0x68'}], count:3 }) }),
-    adc_read:     (p) => { const raw=Math.floor(Math.random()*256); return { stdout: JSON.stringify({ channel:p.channel, raw, voltage:(raw*3.3/255).toFixed(3), percent:(raw*100/255).toFixed(1) }) }; },
-    dht_read:     ()  => ({ stdout: JSON.stringify({ temperature:(20+Math.random()*10).toFixed(1), humidity:(40+Math.random()*30).toFixed(1) }) }),
-    ultrasonic_read:() => ({ stdout: JSON.stringify({ distance_cm:(5+Math.random()*200).toFixed(2) }) }),
-    buzzer:       (p) => ({ stdout: JSON.stringify({ pin:p.pin, state:p.state, frequency:p.frequency }) }),
-    system_info:  ()  => ({ stdout: JSON.stringify({ hostname:'raspberrypi5', kernel:'6.1.63-v8+', arch:'aarch64', cpu_temp_c:(40+Math.random()*20).toFixed(1), memory_kb:{MemTotal:8288256,MemAvailable:6122480}, uptime_s:86423, disk:{total_mb:29440,free_mb:21504} }) }),
-    run_command:  (p) => ({ stdout:'[mock] $ '+p.command+'\nOK\n', stderr:'', returncode:0 }),
-    relay_set:    (p) => ({ stdout: JSON.stringify({ pin:p.pin, state:p.state }) }),
-    led_matrix:   (p) => ({ stdout: JSON.stringify({ pattern:'applied', status:'ok' }) }),
-    seven_segment:(p) => ({ stdout: JSON.stringify({ value:p.value, status:'ok' }) }),
-    led_bar:      (p) => ({ stdout: JSON.stringify({ level:p.level, status:'ok' }) }),
-    ws2812_set:   (p) => ({ stdout: JSON.stringify({ count:p.count, r:p.r, g:p.g, b:p.b, status:'ok' }) }),
-    stepper_control:(p) => ({ stdout: JSON.stringify({ direction:p.direction, steps:p.steps, speed:p.speed, status:'done' }) }),
-    motor_control:(p) => ({ stdout: JSON.stringify({ speed:p.speed, direction:p.direction, status:'ok' }) }),
-    mpu6050_read: ()  => ({ stdout: JSON.stringify({ accel:{x:(Math.random()*2-1).toFixed(3),y:(Math.random()*2-1).toFixed(3),z:(9.8+Math.random()*.2).toFixed(3)}, gyro:{x:(Math.random()*10-5).toFixed(2),y:(Math.random()*10-5).toFixed(2),z:(Math.random()*10-5).toFixed(2)}, temp:(25+Math.random()*5).toFixed(1) }) }),
-    joystick_read:()  => { const x=Math.floor(Math.random()*256),y=Math.floor(Math.random()*256); return { stdout: JSON.stringify({ x, y, button:Math.random()>.8?1:0 }) }; },
-    rfid_read:    ()  => ({ stdout: JSON.stringify({ uid:'A3:B4:C5:D6', type:'MIFARE 1K', status:Math.random()>.5?'detected':'no_card' }) }),
-    keypad_read:  ()  => ({ stdout: JSON.stringify({ key:['1','2','3','A','4','5','6','B','7','8','9','C','*','0','#','D'][Math.floor(Math.random()*16)] }) }),
-    lcd_write:    (p) => ({ stdout: JSON.stringify({ line1:p.line1||'', line2:p.line2||'', status:'ok' }) }),
-    ir_motion_read:(p)=> ({ stdout: JSON.stringify({ pin:p.pin, detected:Math.random()>.5 }) }),
-    photoresistor_read:() => { const raw=Math.floor(Math.random()*256); return { stdout: JSON.stringify({ raw, light_percent:(raw*100/255).toFixed(1) }) }; },
-    thermistor_read:() => ({ stdout: JSON.stringify({ raw:Math.floor(Math.random()*256), temperature_c:(20+Math.random()*15).toFixed(1) }) }),
-  };
+  const connect = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState <= 1) return;
+    const ws = new WebSocket(url);
+    ws.onopen = () => setReady(true);
+    ws.onclose = () => setReady(false);
+    ws.onerror = () => ws.close();
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        const cb = cbMap.current[msg.id];
+        if (cb) {
+          cb(msg);
+          delete cbMap.current[msg.id];
+        }
+      } catch {}
+    };
+    wsRef.current = ws;
+  }, [url]);
+
+  const disconnect = useCallback(() => {
+    if (wsRef.current) wsRef.current.close();
+  }, []);
 
   const logsRef = useRef([]);
   const logListeners = useRef(new Set());
@@ -55,23 +44,37 @@ function useMockWebSocket() {
     logListeners.current.forEach(fn => fn(logsRef.current));
   }, []);
 
-  const send = useCallback(async (action, params={}) => {
+  const send = useCallback((action, params={}) => {
+    return new Promise((resolve) => {
     const ts = new Date().toISOString().slice(11,23);
     addLog({ ts, dir:'out', action, data:params });
-    await new Promise(r => setTimeout(r, 80+Math.random()*150));
-    const fn = MOCK[action];
-    let result;
-    if (fn) {
-      result = { status:'ok', action, data:fn(params) };
-      addLog({ ts:new Date().toISOString().slice(11,23), dir:'in', action, data:result.data });
-    } else {
-      result = { status:'error', message:'unknown: '+action };
-      addLog({ ts:new Date().toISOString().slice(11,23), dir:'err', action, data:result.message });
+    if (!wsRef.current || wsRef.current.readyState !== 1) {
+      addLog({ ts:new Date().toISOString().slice(11,23), dir:'err', action, data:'not connected' });
+      resolve({ status: 'error', message: 'not connected' });
+      return;
     }
-    return result;
-  }, [sshOk]);
+    const id = String(++idRef.current);
+    cbMap.current[id] = (msg) => {
+      addLog({
+        ts:new Date().toISOString().slice(11,23),
+        dir: msg.status === 'ok' ? 'in' : 'err',
+        action,
+        data: msg.data || msg.message,
+      });
+      resolve(msg);
+    };
+    wsRef.current.send(JSON.stringify({ id, action, params }));
+    setTimeout(() => {
+      if (cbMap.current[id]) {
+        addLog({ ts:new Date().toISOString().slice(11,23), dir:'err', action, data:'timeout' });
+        cbMap.current[id]({ status:'error', message:'timeout' });
+        delete cbMap.current[id];
+      }
+    }, 30000);
+    });
+  }, [addLog]);
 
-  return { ready, connect, disconnect, send, sshOk, setSshOk, logsRef, logListeners };
+  return { ready, connect, disconnect, send, logsRef, logListeners };
 }
 
 /* ===================================================================
@@ -91,23 +94,7 @@ function Section({ title }) {
 /* ===================================================================
  *  CONNECTION BAR
  * =================================================================== */
-function ConnectionBar({ ws, sshConnected, setSshConnected }) {
-  const [host, setHost] = useState('192.168.10.22');
-  const [user, setUser] = useState('root');
-  const [pass, setPass] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const handleSSH = async () => {
-    setBusy(true);
-    if (sshConnected) {
-      await ws.send('disconnect');
-      setSshConnected(false);
-    } else {
-      const res = await ws.send('connect', { host, user, password: pass||undefined });
-      if (res.status==='ok') setSshConnected(true);
-    }
-    setBusy(false);
-  };
+function ConnectionBar({ ws }) {
 
   return h('div', { className:'conn-bar' },
     h('span', { className:'status-dot '+(ws.ready?'on':'off') }),
@@ -115,14 +102,48 @@ function ConnectionBar({ ws, sshConnected, setSshConnected }) {
     !ws.ready
       ? h('button', { className:'btn sm', onClick:ws.connect }, 'Connecter WS')
       : h('button', { className:'btn sm danger', onClick:ws.disconnect }, 'Deconnecter WS'),
-    h('span', { style:{margin:'0 6px',color:'var(--border)'} }, '|'),
-    h('input', { placeholder:'IP carte', value:host, onChange:e=>setHost(e.target.value) }),
-    h('input', { placeholder:'User', value:user, onChange:e=>setUser(e.target.value), style:{width:80} }),
-    h('input', { placeholder:'Password', type:'password', value:pass, onChange:e=>setPass(e.target.value), style:{width:100} }),
-    h('button', { className:'btn sm '+(sshConnected?'danger':'success'), onClick:handleSSH, disabled:!ws.ready||busy },
-      sshConnected ? 'Deconnecter SSH' : 'Connecter SSH'),
-    h('span', { className:'status-dot '+(sshConnected?'on':'off') }),
-    h('span', { style:{marginLeft:8,fontSize:'.72rem',padding:'2px 8px',background:'#f59e0b',color:'#000',borderRadius:4,fontWeight:600} }, 'PREVIEW')
+    h('span', { style:{marginLeft:8,fontSize:'.78rem',color:'var(--text-dim)'} }, 'Commandes materiel via WebSocket')
+  );
+}
+
+function SshPanel({ ws, sshConnected, setSshConnected }) {
+  const [host, setHost] = useState('192.168.10.22');
+  const [user, setUser] = useState('root');
+  const [pass, setPass] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [output, setOutput] = useState('');
+
+  const handleSSH = async () => {
+    setBusy(true);
+    if (sshConnected) {
+      const res = await ws.send('disconnect');
+      if (res.status === 'ok') setSshConnected(false);
+      setOutput(JSON.stringify(res.data || res.message || res, null, 2));
+    } else {
+      const res = await ws.send('connect', { host, user, password: pass||undefined });
+      if (res.status === 'ok') setSshConnected(true);
+      setOutput(JSON.stringify(res.data || res.message || res, null, 2));
+    }
+    setBusy(false);
+  };
+
+  return h(Card, { icon:'🔐', title:'Connexion SSH', badge:'Terminal' },
+    h('div', { className:'field' },
+      h('label', null, 'IP carte'),
+      h('input', { value:host, onChange:e=>setHost(e.target.value), placeholder:'192.168.10.22' })),
+    h('div', { className:'field-row' },
+      h('div', { className:'field', style:{flex:1} },
+        h('label', null, 'User'),
+        h('input', { value:user, onChange:e=>setUser(e.target.value), placeholder:'root' })),
+      h('div', { className:'field', style:{flex:1} },
+        h('label', null, 'Password'),
+        h('input', { type:'password', value:pass, onChange:e=>setPass(e.target.value), placeholder:'mot de passe' }))),
+    h('div', { style:{display:'flex',alignItems:'center',gap:8} },
+      h('button', { className:'btn '+(sshConnected?'danger':'success'), onClick:handleSSH, disabled:!ws.ready||busy },
+        sshConnected ? 'Deconnecter SSH' : 'Connecter SSH'),
+      h('span', { className:'status-dot '+(sshConnected?'on':'off') }),
+      h('span', { style:{fontSize:'.82rem',color:sshConnected?'#22c55e':'#ef4444'} }, sshConnected?'SSH OK':'SSH OFF')),
+    output && h('div', { className:'output' }, output)
   );
 }
 
@@ -130,16 +151,76 @@ function ConnectionBar({ ws, sshConnected, setSshConnected }) {
  *  1. BLUE LED  (GPIO17)
  * =================================================================== */
 function BlueLedPanel({ ws, disabled }) {
+  const [led, setLed] = useState(0);
   const [on, setOn] = useState(false);
+  const [lastCmd, setLastCmd] = useState('');
   const [output, setOutput] = useState('');
-  const toggle = async () => {
-    const nv = on ? 0 : 1;
-    const res = await ws.send('gpio_write', { pin:17, value:nv });
-    if (res.status==='ok') setOn(!on);
-    setOutput(JSON.stringify(res.data,null,2));
+
+  const refreshStatus = async (ledIndex = led) => {
+    const res = await ws.send('freenove_led_status', { led: ledIndex });
+    if (res.status === 'ok' && res.data) {
+      setLastCmd(res.data.command || '');
+      const result = res.data.result || {};
+      if (typeof result.stdout === 'string') {
+        const m = result.stdout.match(/brightness=(\d+)/);
+        if (m) setOn(m[1] === '1');
+      }
+      setOutput(JSON.stringify(result, null, 2));
+    } else {
+      setOutput(JSON.stringify(res, null, 2));
+    }
   };
+
+  const setLedValue = async (value) => {
+    const res = await ws.send('freenove_led_set', { led, value });
+    if (res.status === 'ok' && res.data) {
+      setLastCmd(res.data.command || '');
+      const result = res.data.result || {};
+      if (result.returncode === 0) setOn(value === 1);
+      setOutput(JSON.stringify(result, null, 2));
+      await refreshStatus(led);
+      return;
+    }
+    setOutput(JSON.stringify(res, null, 2));
+  };
+
+  const setTrigger = async (trigger) => {
+    const res = await ws.send('freenove_led_trigger', { led, trigger });
+    if (res.status === 'ok' && res.data) {
+      setLastCmd(res.data.command || '');
+      setOutput(JSON.stringify(res.data.result || res.data, null, 2));
+      await refreshStatus(led);
+      return;
+    }
+    setOutput(JSON.stringify(res, null, 2));
+  };
+
+  useEffect(() => {
+    if (ws.ready) refreshStatus(led);
+  }, [ws.ready, led]);
+
   return h(Card, { icon:'🔵', title:'Blue LED', badge:'GPIO17' },
-    h('button', { className:'toggle-big'+(on?' active':''), onClick:toggle, disabled }, on?'ON — Allumee':'OFF — Eteinte'),
+    h('div', { className:'field-row' },
+      h('div', { className:'field', style:{flex:1} },
+        h('label', null, 'LED index (freenove:ledX)'),
+        h('input', {
+          type:'number',
+          min:0,
+          max:31,
+          value:led,
+          onChange:e=>setLed(Math.max(0, Math.min(31, +e.target.value || 0)))
+        })),
+      h('button', { className:'btn sm', onClick:()=>refreshStatus(led), disabled }, 'Status')),
+    h('div', { style:{display:'flex', gap:8, marginBottom:8} },
+      h('button', { className:'btn success', onClick:()=>setLedValue(1), disabled }, 'Allumer'),
+      h('button', { className:'btn danger', onClick:()=>setLedValue(0), disabled }, 'Eteindre')),
+    h('div', { style:{display:'flex', gap:8} },
+      h('button', { className:'btn sm', onClick:()=>setTrigger('timer'), disabled }, 'Trigger timer'),
+      h('button', { className:'btn sm', onClick:()=>setTrigger('none'), disabled }, 'Trigger none')),
+    h('div', { style:{marginTop:8, fontSize:'.8rem', color:'var(--text-dim)'} },
+      'Etat courant: ',
+      h('strong', { style:{color:on?'#22c55e':'#ef4444'} }, on ? 'ON' : 'OFF')),
+    lastCmd && h('div', { className:'output', style:{marginTop:8} }, '$ ' + lastCmd),
     output && h('div', { className:'output' }, output));
 }
 
@@ -780,20 +861,44 @@ function I2cPanel({ ws, disabled }) {
  *  27. GPIO CONTROL (general)
  * =================================================================== */
 function GpioPanel({ ws, disabled }) {
-  const pins = [4,5,6,12,13,14,16,17,18,19,20,21,22,23,24,25,26,27];
+  const pins = [4,5,6,12,13,17,18,22,23,24,25,26,27];
   const [states, setStates] = useState({});
   const [output, setOutput] = useState('');
+  const refreshAll = useCallback(async (showResult = false) => {
+    const res = await ws.send('gpio_read_many', { pins });
+    if (res.status === 'ok' && res.data.stdout) {
+      try {
+        const payload = JSON.parse(res.data.stdout);
+        if (payload.pins) setStates((prev) => ({ ...prev, ...payload.pins }));
+      } catch {}
+      if (showResult) setOutput(JSON.stringify(res.data, null, 2));
+      return;
+    }
+    setOutput(JSON.stringify(res.data || res, null, 2));
+  }, [ws]);
+
   const toggle = async (pin) => {
     const nv = (states[pin]||0) ? 0 : 1;
     const res = await ws.send('gpio_write', { pin, value:nv });
-    if (res.status==='ok') setStates(s=>({...s,[pin]:nv}));
-    setOutput(JSON.stringify(res.data,null,2));
+    if (res.status==='ok') {
+      setStates(s=>({...s,[pin]:nv}));
+      setOutput(JSON.stringify(res.data,null,2));
+      await refreshAll();
+      return;
+    }
+    setOutput(JSON.stringify(res.data || res,null,2));
   };
   const readPin = async (pin) => {
     const res = await ws.send('gpio_read', { pin });
     if (res.status==='ok'&&res.data.stdout) try{setStates(s=>({...s,[pin]:JSON.parse(res.data.stdout).value}));}catch{}
-    setOutput(JSON.stringify(res.data,null,2));
+    setOutput(JSON.stringify(res.data || res,null,2));
   };
+  useEffect(() => {
+    if (disabled) return undefined;
+    refreshAll(true);
+    const timer = setInterval(() => refreshAll(false), 1000);
+    return () => clearInterval(timer);
+  }, [disabled, refreshAll]);
   return h(Card, { icon:'💡', title:'GPIO Control', badge:'BCM' },
     h('div',{className:'gpio-grid'},
       pins.map(p=>h('div',{key:p,className:'gpio-pin'+(states[p]?' active':''),
@@ -975,60 +1080,62 @@ const NAV_ITEMS = [
  *  MAIN APP — 3-column layout
  * =================================================================== */
 function App() {
-  const ws = useMockWebSocket();
+  const wsUrl = 'ws://' + window.location.hostname + ':' + (window.location.port || 8080) + '/ws';
+  const ws = useWebSocket(wsUrl);
   const [sshConnected, setSshConnected] = useState(false);
   const [activePanel, setActivePanel] = useState('gpio');
   const [showDebug, setShowDebug] = useState(false);
-  const dis = !ws.ready || !sshConnected;
+  const wsOnlyDis = !ws.ready;
+  const terminalDis = !ws.ready || !sshConnected;
 
   /* Map panel id -> component */
   const PANELS = {
-    blue_led:     h(BlueLedPanel,{ws,disabled:dis}),
-    rgb_led:      h(RgbLedPanel,{ws,disabled:dis}),
-    ws2812:       h(Ws2812Panel,{ws,disabled:dis}),
-    led_matrix:   h(LedMatrixPanel,{ws,disabled:dis}),
-    seven_seg:    h(SevenSegPanel,{ws,disabled:dis}),
-    led_bar:      h(LedBarPanel,{ws,disabled:dis}),
-    servo:        h(ServoPanel,{ws,disabled:dis}),
-    stepper:      h(StepperPanel,{ws,disabled:dis}),
-    motor:        h(MotorPanel,{ws,disabled:dis}),
-    active_buzz:  h(ActiveBuzzerPanel,{ws,disabled:dis}),
-    passive_buzz: h(PassiveBuzzerPanel,{ws,disabled:dis}),
-    relay:        h(RelayPanel,{ws,disabled:dis}),
-    dht:          h(DhtPanel,{ws,disabled:dis}),
-    ultrasonic:   h(UltrasonicPanel,{ws,disabled:dis}),
-    mpu6050:      h(Mpu6050Panel,{ws,disabled:dis}),
-    ir_motion:    h(IrMotionPanel,{ws,disabled:dis}),
-    photoresist:  h(PhotoresistorPanel,{ws,disabled:dis}),
-    thermistor:   h(ThermistorPanel,{ws,disabled:dis}),
-    button:       h(ButtonPanel,{ws,disabled:dis}),
-    joystick:     h(JoystickPanel,{ws,disabled:dis}),
-    potentiom:    h(PotentiometerPanel,{ws,disabled:dis}),
-    keypad:       h(KeypadPanel,{ws,disabled:dis}),
-    rfid:         h(RfidPanel,{ws,disabled:dis}),
-    lcd:          h(LcdPanel,{ws,disabled:dis}),
-    i2c_scan:     h(I2cPanel,{ws,disabled:dis}),
-    adc:          h(AdcPanel,{ws,disabled:dis}),
-    gpio:         h(GpioPanel,{ws,disabled:dis}),
-    pwm:          h(PwmPanel,{ws,disabled:dis}),
-    terminal:     h(TerminalPanel,{ws,disabled:dis}),
+    blue_led:     h(BlueLedPanel,{ws,disabled:wsOnlyDis}),
+    rgb_led:      h(RgbLedPanel,{ws,disabled:wsOnlyDis}),
+    ws2812:       h(Ws2812Panel,{ws,disabled:wsOnlyDis}),
+    led_matrix:   h(LedMatrixPanel,{ws,disabled:wsOnlyDis}),
+    seven_seg:    h(SevenSegPanel,{ws,disabled:wsOnlyDis}),
+    led_bar:      h(LedBarPanel,{ws,disabled:wsOnlyDis}),
+    servo:        h(ServoPanel,{ws,disabled:wsOnlyDis}),
+    stepper:      h(StepperPanel,{ws,disabled:wsOnlyDis}),
+    motor:        h(MotorPanel,{ws,disabled:wsOnlyDis}),
+    active_buzz:  h(ActiveBuzzerPanel,{ws,disabled:wsOnlyDis}),
+    passive_buzz: h(PassiveBuzzerPanel,{ws,disabled:wsOnlyDis}),
+    relay:        h(RelayPanel,{ws,disabled:wsOnlyDis}),
+    dht:          h(DhtPanel,{ws,disabled:wsOnlyDis}),
+    ultrasonic:   h(UltrasonicPanel,{ws,disabled:wsOnlyDis}),
+    mpu6050:      h(Mpu6050Panel,{ws,disabled:wsOnlyDis}),
+    ir_motion:    h(IrMotionPanel,{ws,disabled:wsOnlyDis}),
+    photoresist:  h(PhotoresistorPanel,{ws,disabled:wsOnlyDis}),
+    thermistor:   h(ThermistorPanel,{ws,disabled:wsOnlyDis}),
+    button:       h(ButtonPanel,{ws,disabled:wsOnlyDis}),
+    joystick:     h(JoystickPanel,{ws,disabled:wsOnlyDis}),
+    potentiom:    h(PotentiometerPanel,{ws,disabled:wsOnlyDis}),
+    keypad:       h(KeypadPanel,{ws,disabled:wsOnlyDis}),
+    rfid:         h(RfidPanel,{ws,disabled:wsOnlyDis}),
+    lcd:          h(LcdPanel,{ws,disabled:wsOnlyDis}),
+    i2c_scan:     h(I2cPanel,{ws,disabled:wsOnlyDis}),
+    adc:          h(AdcPanel,{ws,disabled:wsOnlyDis}),
+    gpio:         h(GpioPanel,{ws,disabled:wsOnlyDis}),
+    pwm:          h(PwmPanel,{ws,disabled:wsOnlyDis}),
+    terminal:     h(TerminalPanel,{ws,disabled:terminalDis}),
   };
 
   return h('div', {className:'app-wrapper'},
     h('header',{className:'app-header'},
       h('h1',null,'\uD83E\uDDEA Freenove ',h('span',null,'Projects Board'),' \u2014 Dashboard'),
       h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
-        h(ConnectionBar,{ws,sshConnected,setSshConnected}),
+        h(ConnectionBar,{ws}),
         h('button',{className:'debug-toggle'+(showDebug?' active':''),onClick:()=>setShowDebug(!showDebug)},
           h('span',{className:'dt-dot'}),
           showDebug?'Debug ON':'Debug'))),
 
     !ws.ready && h('div',{style:{textAlign:'center',padding:40,color:'var(--text-dim)'}},
-      h('p',{style:{fontSize:'1.2rem',marginBottom:12}},'\u26A1 Cliquez pour simuler la connexion'),
-      h('button',{className:'btn',onClick:ws.connect},'Se connecter (simulation)')),
+      h('p',{style:{fontSize:'1.2rem',marginBottom:12}},'\u26A1 Connexion au backend requise'),
+      h('button',{className:'btn',onClick:ws.connect},'Se connecter au WebSocket')),
 
     ws.ready && !sshConnected && h('div',{style:{textAlign:'center',padding:20,color:'#f59e0b',fontSize:'.9rem'}},
-      '\u26A0\uFE0F Connectez-vous en SSH pour activer les controles'),
+      '\u26A0\uFE0F SSH requis uniquement pour le panneau Terminal (a droite)'),
 
     ws.ready && h('div',{className:'app-layout'},
 
@@ -1050,8 +1157,9 @@ function App() {
 
       /* --- Right: System info + Terminal --- */
       h('div',{className:'right-panel'},
-        h(SystemInfoPanel,{ws,disabled:dis}),
-        h(TerminalPanel,{ws,disabled:dis}))),
+        h(SshPanel,{ws,sshConnected,setSshConnected}),
+        h(SystemInfoPanel,{ws,disabled:wsOnlyDis}),
+        h(TerminalPanel,{ws,disabled:terminalDis}))),
 
     /* --- Bottom: Debug panel --- */
     showDebug && h(DebugPanel,{ws})

@@ -34,6 +34,14 @@ def read(pin: int):
     print(json.dumps({"pin": pin, "value": val}))
 
 
+def read_many(pins):
+    values = {}
+    for pin in pins:
+        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        values[str(pin)] = GPIO.input(pin)
+    print(json.dumps({"pins": values}))
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(json.dumps({"error": "usage: gpio_control.py <cmd> <pin> [value]"}))
@@ -46,5 +54,7 @@ if __name__ == "__main__":
         write(pin, int(sys.argv[3]) if len(sys.argv) > 3 else 0)
     elif cmd == "read":
         read(pin)
+    elif cmd == "read-many":
+        read_many([pin] + [int(arg) for arg in sys.argv[3:]])
     else:
         print(json.dumps({"error": f"unknown command: {cmd}"}))

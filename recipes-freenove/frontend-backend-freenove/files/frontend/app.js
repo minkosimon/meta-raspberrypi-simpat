@@ -872,20 +872,44 @@ function I2cPanel({ ws, disabled }) {
  *  27. GPIO CONTROL (general)
  * =================================================================== */
 function GpioPanel({ ws, disabled }) {
-  const pins = [4,5,6,12,13,14,16,17,18,19,20,21,22,23,24,25,26,27];
+  const pins = [4,5,6,12,13,17,18,22,23,24,25,26,27];
   const [states, setStates] = useState({});
   const [output, setOutput] = useState('');
+  const refreshAll = useCallback(async (showResult = false) => {
+    const res = await ws.send('gpio_read_many', { pins });
+    if (res.status === 'ok' && res.data.stdout) {
+      try {
+        const payload = JSON.parse(res.data.stdout);
+        if (payload.pins) setStates((prev) => ({ ...prev, ...payload.pins }));
+      } catch {}
+      if (showResult) setOutput(JSON.stringify(res.data, null, 2));
+      return;
+    }
+    setOutput(JSON.stringify(res.data || res, null, 2));
+  }, [ws]);
+
   const toggle = async (pin) => {
     const nv = (states[pin]||0)?0:1;
     const res = await ws.send('gpio_write', { pin, value:nv });
-    if (res.status==='ok') setStates(s=>({...s,[pin]:nv}));
-    setOutput(JSON.stringify(res.data,null,2));
+    if (res.status==='ok') {
+      setStates(s=>({...s,[pin]:nv}));
+      setOutput(JSON.stringify(res.data,null,2));
+      await refreshAll();
+      return;
+    }
+    setOutput(JSON.stringify(res.data || res,null,2));
   };
   const readPin = async (pin) => {
     const res = await ws.send('gpio_read', { pin });
     if (res.status==='ok'&&res.data.stdout) try{setStates(s=>({...s,[pin]:JSON.parse(res.data.stdout).value}));}catch{}
-    setOutput(JSON.stringify(res.data,null,2));
+    setOutput(JSON.stringify(res.data || res,null,2));
   };
+  useEffect(() => {
+    if (disabled) return;
+    refreshAll(true);
+    const timer = setInterval(() => refreshAll(false), 1000);
+    return () => clearInterval(timer);
+  }, [disabled, refreshAll]);
   return (
     <Card icon="💡" title="GPIO Control" badge="BCM">
       <div className="gpio-grid">
@@ -1135,7 +1159,8 @@ function App() {
   const [sshConnected, setSshConnected] = useState(false);
   const [activePanel, setActivePanel] = useState('gpio');
   const [showDebug, setShowDebug] = useState(false);
-  const dis = !ws.ready || !sshConnected;
+  const wsOnlyDis = !ws.ready;
+  const terminalDis = !ws.ready || !sshConnected;
 
   return (
     <div className="app-wrapper">
@@ -1159,7 +1184,7 @@ function App() {
 
       {ws.ready && !sshConnected && (
         <div style={{textAlign:'center',padding:20,color:'var(--orange)',fontSize:'.9rem'}}>
-          ⚠️ Connectez-vous en SSH a la carte pour activer les controles
+          ⚠️ SSH requis uniquement pour le panneau Terminal (a droite)
         </div>
       )}
 
@@ -1182,13 +1207,13 @@ function App() {
 
           {/* --- Center: active panel --- */}
           <div className="center-panel">
-            <PanelContent id={activePanel} ws={ws} disabled={dis} />
+            <PanelContent id={activePanel} ws={ws} disabled={wsOnlyDis} />
           </div>
 
           {/* --- Right: System info + Terminal --- */}
           <div className="right-panel">
-            <SystemInfoPanel ws={ws} disabled={dis} />
-            <TerminalPanel ws={ws} disabled={dis} />
+            <SystemInfoPanel ws={ws} disabled={wsOnlyDis} />
+            <TerminalPanel ws={ws} disabled={terminalDis} />
           </div>
         </div>
       )}

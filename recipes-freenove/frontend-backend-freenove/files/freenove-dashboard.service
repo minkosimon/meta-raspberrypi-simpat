@@ -1,0 +1,16 @@
+[Unit]
+Description=Freenove FNK0054 Test Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/freenove/backend
+ExecStart=/usr/bin/python3 /opt/freenove/backend/app.py
+Restart=on-failure
+RestartSec=5
+Environment=FNK_FRONTEND_DIR=/opt/freenove/frontend
+Environment=FNK_SCRIPTS_DIR=/opt/freenove/scripts
+Environment=FNK_SSH_HOST=127.0.0.1
+
+[Install]
+WantedBy=multi-user.target
