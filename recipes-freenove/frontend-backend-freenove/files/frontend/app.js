@@ -962,16 +962,75 @@ function PwmPanel({ ws, disabled }) {
 function SystemInfoPanel({ ws, disabled }) {
   const [info, setInfo] = useState(null);
   const [output, setOutput] = useState('');
-  const refresh = async () => {
-    setOutput('Chargement...');
-    const res = await ws.send('system_info');
-    setOutput(JSON.stringify(res.data,null,2));
-    if (res.status==='ok'&&res.data.stdout) try{setInfo(JSON.parse(res.data.stdout));}catch{}
-  };
+  const [refreshSec, setRefreshSec] = useState(1);
+  const pollTimeoutRef = useRef(null);
+  const requestPendingRef = useRef(false);
+
+  const refresh = useCallback(async (silent = false) => {
+    if (requestPendingRef.current) return;
+    requestPendingRef.current = true;
+    if (!silent) setOutput('Chargement...');
+    try {
+      const res = await ws.send('system_info');
+      if (res.status==='ok'&&res.data.stdout) {
+        try {
+          setInfo(JSON.parse(res.data.stdout));
+        } catch {}
+      }
+      if (!silent || res.status !== 'ok') {
+        setOutput(JSON.stringify(res.data || res,null,2));
+      }
+    } finally {
+      requestPendingRef.current = false;
+    }
+  }, [ws]);
+
+  useEffect(() => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+    if (disabled) return undefined;
+
+    let cancelled = false;
+    const delayMs = Math.max(1, refreshSec) * 1000;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      pollTimeoutRef.current = setTimeout(async () => {
+        await refresh(true);
+        scheduleNext();
+      }, delayMs);
+    };
+
+    refresh(true).finally(scheduleNext);
+
+    return () => {
+      cancelled = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [disabled, refreshSec, refresh]);
+
   const fmtUp = s => { if(!s||s<0) return '—'; return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; };
   return (
     <Card icon="🖥️" title="Systeme" badge="Info">
-      <button className="btn" onClick={refresh} disabled={disabled} style={{marginBottom:8}}>Rafraichir</button>
+      <div className="field" style={{marginBottom:8}}>
+        <label>Intervalle de rafraichissement (s)</label>
+        <input
+          type="number"
+          min="1"
+          max="3600"
+          value={refreshSec}
+          onChange={e=>setRefreshSec(Math.max(1, Math.min(3600, +e.target.value || 1)))}
+          disabled={disabled}
+        />
+      </div>
+      <div style={{fontSize:'.78rem',color:'var(--text-dim)',marginBottom:8}}>
+        Auto-refresh actif: toutes les {refreshSec}s
+      </div>
       {info && <div className="sys-grid">
         <div className="sys-item"><div className="label">Hostname</div><div className="value">{info.hostname}</div></div>
         <div className="sys-item"><div className="label">Kernel</div><div className="value" style={{fontSize:'.8rem'}}>{info.kernel}</div></div>
