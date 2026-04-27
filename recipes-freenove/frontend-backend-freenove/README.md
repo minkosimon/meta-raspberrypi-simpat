@@ -4,13 +4,20 @@ Dashboard web pour tester les composants du kit **Freenove FNK0054** sur Raspber
 
 ---
 
+## Documentation
+
+- Guide detaille (FR): [EXPLICATION_FRONTEND_BACKEND.md](EXPLICATION_FRONTEND_BACKEND.md)
+- Detailed guide (EN): [EXPLANATION_FRONTEND_BACKEND_EN.md](EXPLANATION_FRONTEND_BACKEND_EN.md)
+
+---
+
 ## Architecture
 
 ```
 ┌─────────────────────┐
 │   React Frontend    │  (navigateur PC/tablette)
 │   index.html        │
-│   app.js / style.css│
+│   app-preview.js / style.css│
 └────────┬────────────┘
          │ WebSocket (port 8080)
          ▼
@@ -35,10 +42,11 @@ Dashboard web pour tester les composants du kit **Freenove FNK0054** sur Raspber
 
 | Module            | Script board-side       | Matériel                        |
 |-------------------|-------------------------|---------------------------------|
-| GPIO Control      | `gpio_control.py`       | LEDs, boutons (BCM 2-27)       |
+| GPIO / Freenove LEDs | `manage_GPIO_led.py` | LEDs, boutons (BCM 2-27)       |
 | PWM               | `pwm_control.py`        | LED dimming (GPIO 12,13,18,19) |
 | Servo moteur      | `servo_control.py`      | SG90 (0-180°)                  |
 | LED RGB           | `led_rgb.py`            | LED RGB anode commune           |
+| LED Matrix 8x8    | `led_matrix.py`         | Matrice 74HC595                 |
 | I2C Scanner       | `i2c_scan.py`           | Bus I2C (détection périph.)    |
 | ADC               | `adc_read.py`           | ADS7830 8-ch (potentiomètre)  |
 | DHT11             | `dht_read.py`           | Température + humidité         |
@@ -60,9 +68,11 @@ frontend-backend-freenove/
     │   └── requirements.txt
     ├── board-scripts/              ← Scripts installés sur la carte
     │   ├── gpio_control.py
+    │   ├── manage_GPIO_led.py
     │   ├── pwm_control.py
     │   ├── servo_control.py
     │   ├── led_rgb.py
+    │   ├── led_matrix.py
     │   ├── i2c_scan.py
     │   ├── adc_read.py
     │   ├── dht_read.py
@@ -70,7 +80,8 @@ frontend-backend-freenove/
     │   ├── buzzer.py
     │   └── system_info.py
     └── frontend/
-        ├── index.html              ← SPA React (CDN)
+        ├── index.html              ← SPA React (scripts React locaux)
+        ├── app-preview.js          ← Vue principale chargée par index.html
         ├── app.js                  ← Composants React
         └── style.css               ← Thème dark
 ```
@@ -135,20 +146,26 @@ Messages JSON :
 | `connect`         | `host`, `user`, `password`                    |
 | `disconnect`      | —                                             |
 | `status`          | —                                             |
+| `freenove_led_status` | `led`                                      |
+| `freenove_led_set` | `led`, `value` (0/1)                         |
+| `freenove_led_trigger` | `led`, `trigger` (`none`/`timer`)        |
 | `gpio_setup`      | `pin`, `direction` (in/out)                   |
 | `gpio_write`      | `pin`, `value` (0/1)                          |
 | `gpio_read`       | `pin`                                         |
+| `gpio_read_many`  | `pins` (liste BCM)                            |
 | `pwm_start`       | `pin`, `frequency`, `duty`                    |
+| `pwm_set`         | `pin`, `duty`                                 |
 | `pwm_stop`        | `pin`                                         |
 | `servo_set`       | `pin`, `angle` (0-180)                        |
 | `led_rgb`         | `r_pin`, `g_pin`, `b_pin`, `r`, `g`, `b`     |
+| `led_matrix`      | `pattern` (liste de 8 valeurs 0-255)          |
 | `i2c_scan`        | `bus`                                         |
 | `adc_read`        | `channel` (0-7)                               |
 | `dht_read`        | `pin`                                         |
 | `ultrasonic_read` | `trig_pin`, `echo_pin`                        |
 | `buzzer`          | `pin`, `state` (on/off/tone), `frequency`, `duration` |
 | `system_info`     | —                                             |
-| `run_command`     | `command`                                     |
+| `run_command`     | `command` (necessite connexion SSH active)    |
 
 ## Circuits de référence (FNK0054)
 

@@ -7,19 +7,18 @@ We can learn how to build the simplest C/C++ code, Linux drivers, and Python 3 a
 For many of you, when you start to build a Linux system, you use an SD card to store the Linux OS.
 You waste time burning SD cards instead of using a boot system like TFTP or NFS.
 
+**Electronic Board**
 
-**Electronic Board** 
-
-* Raspberrypi5
-* Raspbberypi4
-* Raspberrypi3
+- Raspberrypi5
+- Raspbberypi4
+- Raspberrypi3
 
 # Depencies with others layers
 
 layer meta-raspberrypi get dependance with layers:
 
-* meta-raspberrypi
-* core.  
+- meta-raspberrypi
+- core.
 
 [link layer.conf](conf/layer.conf)
 
@@ -27,7 +26,7 @@ layer meta-raspberrypi get dependance with layers:
 
 # Documentation Structure
 
-This layer's documentation is organized into four levels:
+This layer's documentation is organized into six levels:
 
 1. **[README.md](README.md)** (this file) - Quick overview and usage guide
 2. **[classes/README-CLASS.md](classes/README-CLASS.md)** - Detailed class documentation (`image-support`, `support-img-type`, `network-config`)
@@ -38,6 +37,10 @@ This layer's documentation is organized into four levels:
    - [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md) - Cas d'usage pratiques (DHCP, IP statique, VLAN, bridge, bond)
 5. **Freenove Kit Drivers:**
    - [recipes-freenove/blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md) - GPIO17 blue LED blink driver (platform driver + DT overlay + gpiod API)
+6. **Freenove Dashboard (Frontend + Backend):**
+   - [recipes-freenove/frontend-backend-freenove/README.md](recipes-freenove/frontend-backend-freenove/README.md) - React dashboard + Python aiohttp backend for FNK0054 kit testing
+   - [recipes-freenove/frontend-backend-freenove/EXPLICATION_FRONTEND_BACKEND.md](recipes-freenove/frontend-backend-freenove/EXPLICATION_FRONTEND_BACKEND.md) - Guide detaille (FR)
+   - [recipes-freenove/frontend-backend-freenove/EXPLANATION_FRONTEND_BACKEND_EN.md](recipes-freenove/frontend-backend-freenove/EXPLANATION_FRONTEND_BACKEND_EN.md) - Detailed guide (EN)
 
 ### Documentation Navigation Map
 
@@ -47,29 +50,34 @@ graph TD
     B["classes/README-CLASS.md<br/>Class Details & Internals"]
     C["recipes-core/images/<br/>README-RECIPE.md<br/>Recipes & Examples"]
     D["recipes-network/<br/>simpat-network-config/<br/>DOCUMENTATION.md<br/>Network Config"]
-    
+    E["recipes-freenove/<br/>frontend-backend-freenove/<br/>README.md<br/>Freenove Dashboard"]
+
     A -->|"I want to build<br/>an image"| REC["Choose Recipe<br/>Decision Tree"]
     REC -->|"Show me how"| C
-    
+
     A -->|"I want to understand<br/>how it works"| B
     A -->|"I need to configure<br/>the network"| D
+    A -->|"I want to test<br/>the Freenove kit"| E
     A -->|"I need to debug<br/>or customize"| BOTH["Read both<br/>Classes + Recipes"]
-    
+
     B -->|"Show me<br/>variables"| VARS["Key Variables<br/>Reference"]
     B -->|"Troubleshoot<br/>issues"| DEBUG["Debugging<br/>Tips"]
-    
+
     C -->|"Configuration<br/>examples"| CONFIG["Config<br/>Templates"]
     C -->|"I want custom<br/>recipe"| CUSTOM["Custom Recipe<br/>Template"]
-    
+
     D -->|"Use cases"| UC["USECASES.md"]
     D -->|"Summary"| SUM["SUMMARY.md"]
-    
+    E -->|"Guide FR"| FR["EXPLICATION_<br/>FRONTEND_BACKEND.md"]
+    E -->|"Guide EN"| EN["EXPLANATION_<br/>FRONTEND_BACKEND_EN.md"]
+
     REC -.->|"Need help<br/>choosing?"| DECISION["Use Decision<br/>Tree in RECIPE"]
-    
+
     style A fill:#e3f2fd,stroke:#01579b,stroke-width:2px
     style B fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     style C fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
     style D fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style E fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style REC fill:#c8e6c9,stroke:#2e7d32
     style DECISION fill:#fff9c4,stroke:#f57f17
 ```
@@ -78,7 +86,7 @@ graph TD
 
 # Architecture Overview
 
-The layer's architecture is built on **two core classes** that work together with multiple image recipes to provide flexible Raspberry Pi imaging:
+The layer's architecture is built on **two core classes** that work together with multiple image recipes to provide flexible Raspberry Pi imaging, plus an optional Freenove web dashboard stack:
 
 ## Class Architecture
 
@@ -96,10 +104,20 @@ flowchart TB
         B3["Manages boot files\ngeneration"]
         B4["Handles kernel bundling\nfor initramfs images"]
     end
+    subgraph FREENOVE["Freenove Dashboard Stack"]
+        F1["React Frontend\n(port 8080)"]
+        F2["Python Backend\n(aiohttp + WebSocket)"]
+        F3["SSH Bridge\n(paramiko)"]
+        F4["Board Scripts\n/opt/freenove"]
+    end
     BASE -->|inherits| CHILD
+    F1 --> F2
+    F2 --> F3
+    F3 --> F4
 
     style BASE fill:#e3f2fd,stroke:#01579b,stroke-width:2px
     style CHILD fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    style FREENOVE fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
 
 ## Class Descriptions
@@ -109,6 +127,7 @@ flowchart TB
 **Purpose:** Provides the foundation for all Raspberry Pi image deployment types.
 
 **Key Features:**
+
 - **Auto-Detection:** Automatically detects whether to build a **SD Card image** (with WIC) or a **TFTP network boot** image
 - **WIC Configuration:** Sets up disk partitioning, boot partition size, rootfs filesystem type (ext4)
 - **TFTP Deployment:** Automatically deploys boot files (kernel, DTB, bootloader) to a TFTP server folder
@@ -118,6 +137,7 @@ flowchart TB
 **Usage:** Inherited by all image recipes (both SD Card and TFTP variants)
 
 **Key Variables:**
+
 - `SUPPORT_BOOT`: Indicates boot type ("sdcard" or "tftp")
 - `IMAGE_SUPPORT_MEDIA`: Media type (default: "sdcard")
 - `TFTP_BOOT_FOLDER`: Where to deploy TFTP boot files (default: "/tmp/srv/tftp")
@@ -130,6 +150,7 @@ flowchart TB
 **Purpose:** Configures image type-specific behaviors for **SD Card images only**.
 
 **Key Features:**
+
 - **Image Type Mapping:** Maps image types (rootfs/ramfs/nfs) to WKS kickstart files
 - **Kernel Configuration:** Handles kernel bundling with initramfs for RAMFS images
 - **Boot Files Generation:** Automatically assembles correct boot files based on image type
@@ -138,6 +159,7 @@ flowchart TB
 **Usage:** Inherited ONLY by SD Card image recipes, NOT by TFTP recipes
 
 **Key Variables:**
+
 - `SUPPORT_IMG_TYPE`: Image type ("rootfs", "ramfs", or "nfs")
 - `INITRAMFS_IMAGE`: Initramfs image to bundle (for RAMFS type)
 - `IP_SERVER_NFS`: NFS server IP address
@@ -162,11 +184,13 @@ The layer provides **6 image recipes** organized into two groups:
 ### Quick Overview
 
 **SD Card Images:**
+
 - `simpat-image-sdcard-rootfs` - Standard SD card with local ext4 rootfs
 - `simpat-image-sdcard-nfs` - SD card with NFS-mounted rootfs
 - `simpat-image-sdcard-ramfs` - SD card with bundled initramfs (RAM boot)
 
 **TFTP/Network Images:**
+
 - `simpat-image-tftp` - Basic TFTP boot with tar.bz2 rootfs
 - `simpat-image-tftp-nfs` - Complete network boot (TFTP + NFS)
 - `simpat-image-tftp-ramfs` - TFTP boot with RAM rootfs
@@ -179,6 +203,7 @@ The layer provides **6 image recipes** organized into two groups:
 ### Quick Configuration Examples
 
 **SD Card Images (inherit both `image-support` + `support-img-type`):**
+
 ```bitbake
 require recipes-core/images/core-image-minimal.bb
 inherit image-support support-img-type
@@ -189,6 +214,7 @@ FOLDER_NFS_SERVER = "/tmp/nfs/rootfs"
 ```
 
 **TFTP Images (inherit only `image-support`):**
+
 ```bitbake
 require recipes-core/images/core-image-minimal.bb
 inherit image-support
@@ -202,31 +228,34 @@ FOLDER_NFS_SERVER = "/tmp/srv/nfsroot"
 
 ## Deployment Modes Reference
 
-| Feature | SD Card + Rootfs | SD Card + NFS | SD Card + RAMFS | TFTP + Rootfs | TFTP + NFS | TFTP + RAMFS |
-|---------|---|---|---|---|---|---|
-| Storage | Local ext4 | Network NFS | RAM (initramfs) | Network TAR | Network NFS+TAR | RAM (bundled kernel) |
-| Boot Time | Medium | Fast | Fastest | Medium | Fast | Fastest |
-| Boot Files | SD card | SD card | SD card | TFTP | TFTP | TFTP |
-| Rootfs | SD card | NFS | Kernel | Network | NFS | Kernel |
-| Recipe | `simpat-image-sdcard-rootfs` | `simpat-image-sdcard-nfs` | `simpat-image-sdcard-ramfs` | `simpat-image-tftp` | `simpat-image-tftp-nfs` | `simpat-image-tftp-ramfs` |
+| Feature    | SD Card + Rootfs             | SD Card + NFS             | SD Card + RAMFS             | TFTP + Rootfs       | TFTP + NFS              | TFTP + RAMFS              |
+| ---------- | ---------------------------- | ------------------------- | --------------------------- | ------------------- | ----------------------- | ------------------------- |
+| Storage    | Local ext4                   | Network NFS               | RAM (initramfs)             | Network TAR         | Network NFS+TAR         | RAM (bundled kernel)      |
+| Boot Time  | Medium                       | Fast                      | Fastest                     | Medium              | Fast                    | Fastest                   |
+| Boot Files | SD card                      | SD card                   | SD card                     | TFTP                | TFTP                    | TFTP                      |
+| Rootfs     | SD card                      | NFS                       | Kernel                      | Network             | NFS                     | Kernel                    |
+| Recipe     | `simpat-image-sdcard-rootfs` | `simpat-image-sdcard-nfs` | `simpat-image-sdcard-ramfs` | `simpat-image-tftp` | `simpat-image-tftp-nfs` | `simpat-image-tftp-ramfs` |
 
 ---
 
 ## Quick Build Examples
 
 ### Build SD Card with Local Rootfs:
+
 ```bash
 bitbake simpat-image-sdcard-rootfs
 # Output: .wic image ready to burn to SD card
 ```
 
 ### Build SD Card with NFS Boot:
+
 ```bash
 bitbake simpat-image-sdcard-nfs
 # Configurable: IP_SERVER_NFS, FOLDER_NFS_SERVER
 ```
 
 ### Build Complete Network Boot (TFTP + NFS):
+
 ```bash
 bitbake simpat-image-tftp-nfs
 # Auto-deploys:
@@ -239,6 +268,7 @@ bitbake simpat-image-tftp-nfs
 ## Advanced Topics
 
 👉 **For advanced configuration:**
+
 - Class internals and Python functions → [classes/README-CLASS.md](classes/README-CLASS.md)
 - Detailed bootloader support → [classes/README-CLASS.md](classes/README-CLASS.md#bootloader-support)
 - Custom image recipes → [recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md#creating-custom-recipes)
@@ -304,15 +334,42 @@ flowchart TD
 
 ## Documentation Map
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[README.md](README.md)** | Quick overview, common tasks | Everyone |
-| **[classes/README-CLASS.md](classes/README-CLASS.md)** | Class internals, configuration, debugging | Advanced users, developers |
-| **[recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)** | Recipe details, examples, customization | Recipe developers |
-| **[DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)** | Configuration réseau systemd-networkd | Network developers |
-| **[SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md)** | Résumé du système réseau | Everyone |
-| **[USECASES.md](recipes-network/simpat-network-config/USECASES.md)** | Cas d'usage réseau (VLAN, bridge, bond) | Network developers |
-| **[blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md)** | GPIO17 LED driver (gpiod + DT overlay) | Driver developers |
+| Document                                                                                        | Purpose                                                              | Audience                    |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------- |
+| **[README.md](README.md)**                                                                      | Quick overview, common tasks                                         | Everyone                    |
+| **[classes/README-CLASS.md](classes/README-CLASS.md)**                                          | Class internals, configuration, debugging                            | Advanced users, developers  |
+| **[recipes-core/images/README-RECIPE.md](recipes-core/images/README-RECIPE.md)**                | Recipe details, examples, customization                              | Recipe developers           |
+| **[DOCUMENTATION.md](recipes-network/simpat-network-config/DOCUMENTATION.md)**                  | Configuration réseau systemd-networkd                                | Network developers          |
+| **[SUMMARY.md](recipes-network/simpat-network-config/SUMMARY.md)**                              | Résumé du système réseau                                             | Everyone                    |
+| **[USECASES.md](recipes-network/simpat-network-config/USECASES.md)**                            | Cas d'usage réseau (VLAN, bridge, bond)                              | Network developers          |
+| **[blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md)**                       | GPIO17 LED driver (gpiod + DT overlay)                               | Driver developers           |
+| **[frontend-backend-freenove/README.md](recipes-freenove/frontend-backend-freenove/README.md)** | Freenove FNK0054 web dashboard (React + Python backend + SSH bridge) | QA, integration, demo users |
+
+---
+
+## Freenove FNK0054 Dashboard
+
+The layer also includes a complete **Frontend + Backend test dashboard** for the Freenove FNK0054 kit:
+
+- **Frontend:** React single-page UI served on port 8080
+- **Backend:** Python `aiohttp` + WebSocket API + SSH bridge (`paramiko`)
+- **Board-side scripts:** Installed under `/opt/freenove/` for GPIO, PWM, sensors, and diagnostics
+
+Main capabilities include:
+
+- GPIO and Freenove LED control
+- PWM and servo control
+- RGB LED and 8x8 matrix control
+- I2C scan and ADC read
+- DHT11 and ultrasonic sensor reads
+- Buzzer control and system information
+- Remote shell command execution over SSH
+
+Documentation:
+
+- [recipes-freenove/frontend-backend-freenove/README.md](recipes-freenove/frontend-backend-freenove/README.md)
+- [recipes-freenove/frontend-backend-freenove/EXPLICATION_FRONTEND_BACKEND.md](recipes-freenove/frontend-backend-freenove/EXPLICATION_FRONTEND_BACKEND.md)
+- [recipes-freenove/frontend-backend-freenove/EXPLANATION_FRONTEND_BACKEND_EN.md](recipes-freenove/frontend-backend-freenove/EXPLANATION_FRONTEND_BACKEND_EN.md)
 
 ---
 
@@ -324,6 +381,7 @@ flowchart TD
    - 🎯 RAM-based boot? → `simpat-image-sdcard-ramfs` or `simpat-image-tftp-ramfs`
 
 2. **Build the image:**
+
    ```bash
    bitbake simpat-image-sdcard-rootfs
    ```
@@ -345,7 +403,7 @@ The `meta-raspberrypi-simpat` layer provides a clean, maintainable approach to b
 ✅ **Smart defaults** - Works out-of-the-box for common scenarios  
 ✅ **Flexible configuration** - Override any setting for custom needs  
 ✅ **Network boot support** - TFTP/NFS for development and testing  
-✅ **Complete documentation** - From quick start to advanced debugging  
+✅ **Complete documentation** - From quick start to advanced debugging
 
 ---
 
@@ -357,5 +415,5 @@ The `meta-raspberrypi-simpat` layer provides a clean, maintainable approach to b
 👉 Network use cases: [recipes-network/simpat-network-config/USECASES.md](recipes-network/simpat-network-config/USECASES.md)  
 👉 WKS templates: See `wic/` directory  
 👉 Freenove LED driver: [recipes-freenove/blink-blue-led/README.md](recipes-freenove/blink-blue-led/README.md)  
+👉 Freenove dashboard: [recipes-freenove/frontend-backend-freenove/README.md](recipes-freenove/frontend-backend-freenove/README.md)  
 👉 Main project: [README.md](README.md)
-
