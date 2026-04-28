@@ -280,6 +280,12 @@ async def dispatch(action: str, params: dict) -> dict:
     if action == "system_info":
         return await _run_board_script("system_info.py", "")
 
+    if action == "fan_set":
+        enabled = bool(params.get("enabled", True))
+        state = "on" if enabled else "off"
+        result = await _run_board_script("fan_control.py", f"set {state}")
+        return {"enabled": enabled, "state": state, "result": result}
+
     # --- Raw command ---
     if action == "run_command":
         cmd = params.get("command", "")

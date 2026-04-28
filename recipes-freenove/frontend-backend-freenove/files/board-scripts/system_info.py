@@ -8,6 +8,9 @@ import os
 import platform
 
 
+FAN_INPUT_PATH = "/sys/class/hwmon/hwmon1/fan1_input"
+
+
 def get_cpu_temp() -> float:
     try:
         with open("/sys/class/thermal/thermal_zone0/temp") as f:
@@ -44,7 +47,16 @@ def get_disk() -> dict:
     return {"total_mb": total // (1024 * 1024), "free_mb": free // (1024 * 1024)}
 
 
+def get_fan_rpm() -> int | None:
+    try:
+        with open(FAN_INPUT_PATH) as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
 def main():
+    fan_rpm = get_fan_rpm()
     info = {
         "hostname": platform.node(),
         "kernel": platform.release(),
@@ -53,6 +65,9 @@ def main():
         "memory_kb": get_memory(),
         "uptime_s": get_uptime(),
         "disk": get_disk(),
+        "fan_rpm": fan_rpm,
+        "fan_active": fan_rpm is not None and fan_rpm > 0,
+        "fan_available": fan_rpm is not None,
     }
     print(json.dumps(info))
 
