@@ -1,0 +1,8 @@
+[Unit]
+Description=Write Chrony status to /tmp/ntp/status
+After=network-online.target chronyd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'mkdir -p /tmp/ntp && /usr/bin/chrony-status > /tmp/ntp/status'

@@ -31,7 +31,7 @@ NETWORK_CONFIG_JSON ?= ""
 # ============================================================================
 # Runtime Dependencies (optional - only if systemd is available)
 # ============================================================================
-DEPENDS:append = " ${@oe.utils.conditional('DISTRO_FEATURES', 'systemd', 'python3-jsonschema python3-jinja2', '', d)}"
+DEPENDS:append = " ${@oe.utils.conditional('DISTRO_FEATURES', 'systemd', 'python3-jsonschema-native python3-jinja2-native', '', d)}"
 RDEPENDS:${PN}:append = " ${@oe.utils.conditional('DISTRO_FEATURES', 'systemd', 'systemd', '', d)}"
 
 # ============================================================================

@@ -20,6 +20,8 @@ SRC_URI = " \
     file://board-scripts/dht_read.py \
     file://board-scripts/ultrasonic.py \
     file://board-scripts/buzzer.py \
+    file://board-scripts/fan_control.py \
+    file://board-scripts/ntp_status.py \
     file://board-scripts/system_info.py \
     file://frontend/index.html \
     file://frontend/app-preview.js \

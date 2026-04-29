@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Chrony status every 2 seconds
+
+[Timer]
+OnBootSec=2s
+OnUnitActiveSec=2s
+Unit=chrony-status.service
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

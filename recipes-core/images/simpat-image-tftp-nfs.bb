@@ -60,6 +60,8 @@ IMAGE_INSTALL:append = " \
     user-management \
     console-keymap \
     frontend-backend-freenove \
+    chrony \
+    chronyc \
 "
 
 # ============================================================================

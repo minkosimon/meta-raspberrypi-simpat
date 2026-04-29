@@ -6,7 +6,10 @@ Output: JSON with CPU temp, memory, uptime, kernel, etc.
 import json
 import os
 import platform
+import time
+from datetime import datetime, timezone
 
+from ntp_status import read_ntp_status
 
 FAN_INPUT_PATH = "/sys/class/hwmon/hwmon1/fan1_input"
 
@@ -17,6 +20,42 @@ def get_cpu_temp() -> float:
             return round(int(f.read().strip()) / 1000, 1)
     except (FileNotFoundError, ValueError):
         return -1
+
+
+def read_cpu_times() -> tuple[int, int] | None:
+    try:
+        with open("/proc/stat") as f:
+            fields = f.readline().split()[1:]
+    except FileNotFoundError:
+        return None
+
+    if len(fields) < 4:
+        return None
+
+    values = [int(value) for value in fields]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    total = sum(values)
+    return idle, total
+
+
+def get_cpu_usage_percent() -> float | None:
+    start = read_cpu_times()
+    if start is None:
+        return None
+
+    time.sleep(0.1)
+
+    end = read_cpu_times()
+    if end is None:
+        return None
+
+    idle_delta = end[0] - start[0]
+    total_delta = end[1] - start[1]
+    if total_delta <= 0:
+        return None
+
+    usage = 100.0 * (1.0 - (idle_delta / total_delta))
+    return round(usage, 1)
 
 
 def get_memory() -> dict:
@@ -55,19 +94,26 @@ def get_fan_rpm() -> int | None:
         return None
 
 
+def get_current_utc_time() -> str:
+    return datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y")
+
+
 def main():
     fan_rpm = get_fan_rpm()
     info = {
         "hostname": platform.node(),
         "kernel": platform.release(),
         "arch": platform.machine(),
+        "cpu_usage_percent": get_cpu_usage_percent(),
         "cpu_temp_c": get_cpu_temp(),
         "memory_kb": get_memory(),
         "uptime_s": get_uptime(),
         "disk": get_disk(),
+        "current_utc_time": get_current_utc_time(),
         "fan_rpm": fan_rpm,
         "fan_active": fan_rpm is not None and fan_rpm > 0,
         "fan_available": fan_rpm is not None,
+        "ntp": read_ntp_status(),
     }
     print(json.dumps(info))
 
