@@ -108,28 +108,7 @@ function Section({ title }) {
 /* ===================================================================
  *  CONNECTION BAR
  * =================================================================== */
-function ConnectionBar({ ws, sshConnected, setSshConnected }) {
-  const [host, setHost] = useState("192.168.10.22");
-  const [user, setUser] = useState("root");
-  const [pass, setPass] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const handleSSH = async () => {
-    setBusy(true);
-    if (sshConnected) {
-      await ws.send("disconnect");
-      setSshConnected(false);
-    } else {
-      const res = await ws.send("connect", {
-        host,
-        user,
-        password: pass || undefined,
-      });
-      if (res.status === "ok") setSshConnected(true);
-    }
-    setBusy(false);
-  };
-
+function ConnectionBar({ ws }) {
   return (
     <div className="conn-bar">
       <span className={`status-dot ${ws.ready ? "on" : "off"}`} />
@@ -147,33 +126,11 @@ function ConnectionBar({ ws, sshConnected, setSshConnected }) {
           Deconnecter WS
         </button>
       )}
-      <span style={{ margin: "0 6px", color: "var(--border)" }}>|</span>
-      <input
-        placeholder="IP carte"
-        value={host}
-        onChange={(e) => setHost(e.target.value)}
-      />
-      <input
-        placeholder="User"
-        value={user}
-        onChange={(e) => setUser(e.target.value)}
-        style={{ width: 80 }}
-      />
-      <input
-        placeholder="Password"
-        type="password"
-        value={pass}
-        onChange={(e) => setPass(e.target.value)}
-        style={{ width: 100 }}
-      />
-      <button
-        className={`btn sm ${sshConnected ? "danger" : "success"}`}
-        onClick={handleSSH}
-        disabled={!ws.ready || busy}
+      <span
+        style={{ marginLeft: 8, fontSize: ".78rem", color: "var(--text-dim)" }}
       >
-        {sshConnected ? "Deconnecter SSH" : "Connecter SSH"}
-      </button>
-      <span className={`status-dot ${sshConnected ? "on" : "off"}`} />
+        Commandes materiel via WebSocket
+      </span>
     </div>
   );
 }
@@ -1820,6 +1777,23 @@ function SystemInfoPanel({ ws, disabled }) {
     : info.fan_active
       ? "#22c55e"
       : "#f59e0b";
+  const diskFreeGb =
+    info?.disk?.free_mb != null ? (info.disk.free_mb / 1024).toFixed(1) : null;
+  const diskTotalGb =
+    info?.disk?.total_mb != null
+      ? (info.disk.total_mb / 1024).toFixed(1)
+      : null;
+  const ramUsagePercent =
+    info?.memory_kb?.MemTotal && info?.memory_kb?.MemAvailable != null
+      ? Math.round(
+          ((info.memory_kb.MemTotal - info.memory_kb.MemAvailable) /
+            info.memory_kb.MemTotal) *
+            1000,
+        ) / 10
+      : null;
+  const bootModeLabel = info?.boot_mode?.mode
+    ? info.boot_mode.mode.toUpperCase()
+    : "—";
   const ntp = info?.ntp;
   const ntpStatusLabel = !ntp?.available
     ? "Indisponible"
@@ -1892,7 +1866,9 @@ function SystemInfoPanel({ ws, disabled }) {
             <div className="status-cell">
               <div className="status-label">CPU Charge</div>
               <div className="status-value">
-                {info.cpu_usage_percent != null ? info.cpu_usage_percent + "%" : "—"}
+                {info.cpu_usage_percent != null
+                  ? info.cpu_usage_percent + "%"
+                  : "—"}
               </div>
             </div>
             <div className="status-cell">
@@ -1900,13 +1876,25 @@ function SystemInfoPanel({ ws, disabled }) {
               <div className="status-value">{fmtUp(info.uptime_s)}</div>
             </div>
             <div className="status-cell">
+              <div className="status-label">RAM Usage</div>
+              <div className="status-value">
+                {ramUsagePercent != null ? ramUsagePercent + "%" : "—"}
+              </div>
+            </div>
+            <div className="status-cell">
               <div className="status-label">Arch</div>
               <div className="status-value">{info.arch || "—"}</div>
             </div>
             <div className="status-cell">
-              <div className="status-label">Disque</div>
+              <div className="status-label">Boot mode</div>
+              <div className="status-value">{bootModeLabel}</div>
+            </div>
+            <div className="status-cell">
+              <div className="status-label">Stockage libre</div>
               <div className="status-value compact">
-                {info.disk ? info.disk.free_mb + " MB" : "—"}
+                {diskFreeGb != null && diskTotalGb != null
+                  ? `${diskFreeGb} Go / ${diskTotalGb} Go`
+                  : "—"}
               </div>
             </div>
             <div className="status-cell">
@@ -1986,49 +1974,6 @@ function SystemInfoPanel({ ws, disabled }) {
         )}
       </Card>
     </>
-  );
-}
-
-/* ===================================================================
- *  30. TERMINAL SSH
- * =================================================================== */
-function TerminalPanel({ ws, disabled }) {
-  const [cmd, setCmd] = useState("");
-  const [history, setHistory] = useState([]);
-  const run = async () => {
-    if (!cmd.trim()) return;
-    setHistory((h) => [...h, "$ " + cmd]);
-    const res = await ws.send("run_command", { command: cmd });
-    if (res.status === "ok" && res.data) {
-      if (res.data.stdout) setHistory((h) => [...h, res.data.stdout]);
-      if (res.data.stderr)
-        setHistory((h) => [...h, "[stderr] " + res.data.stderr]);
-    } else {
-      setHistory((h) => [
-        ...h,
-        "[error] " + (res.message || JSON.stringify(res)),
-      ]);
-    }
-    setCmd("");
-  };
-  return (
-    <Card icon="⌨️" title="Terminal SSH" badge="Shell">
-      <div className="output" style={{ minHeight: 100 }}>
-        {history.length === 0 ? "Entrez une commande..." : history.join("\n")}
-      </div>
-      <div className="terminal-input">
-        <input
-          value={cmd}
-          onChange={(e) => setCmd(e.target.value)}
-          placeholder="Commande..."
-          onKeyDown={(e) => e.key === "Enter" && !disabled && run()}
-          disabled={disabled}
-        />
-        <button className="btn" onClick={run} disabled={disabled}>
-          Run
-        </button>
-      </div>
-    </Card>
   );
 }
 
@@ -2136,7 +2081,6 @@ const NAV_ITEMS = [
   { section: "🔧 Systeme" },
   { id: "gpio", icon: "💡", label: "GPIO Control", badge: "BCM" },
   { id: "pwm", icon: "〰️", label: "PWM Control", badge: "GPIO" },
-  { id: "terminal", icon: "⌨️", label: "Terminal SSH", badge: "Shell" },
 ];
 
 /* Panel renderer — returns the component for a given id */
@@ -2198,8 +2142,6 @@ function PanelContent({ id, ws, disabled }) {
       return <GpioPanel ws={ws} disabled={disabled} />;
     case "pwm":
       return <PwmPanel ws={ws} disabled={disabled} />;
-    case "terminal":
-      return <TerminalPanel ws={ws} disabled={disabled} />;
     default:
       return (
         <p style={{ color: "var(--text-dim)" }}>Selectionnez un composant</p>
@@ -2213,11 +2155,9 @@ function PanelContent({ id, ws, disabled }) {
 function App() {
   const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws`;
   const ws = useWebSocket(wsUrl);
-  const [sshConnected, setSshConnected] = useState(false);
   const [activePanel, setActivePanel] = useState("gpio");
   const [showDebug, setShowDebug] = useState(false);
   const wsOnlyDis = !ws.ready;
-  const terminalDis = !ws.ready || !sshConnected;
 
   return (
     <div className="app-wrapper">
@@ -2233,11 +2173,7 @@ function App() {
             flexWrap: "wrap",
           }}
         >
-          <ConnectionBar
-            ws={ws}
-            sshConnected={sshConnected}
-            setSshConnected={setSshConnected}
-          />
+          <ConnectionBar ws={ws} />
           <button
             className={`debug-toggle${showDebug ? " active" : ""}`}
             onClick={() => setShowDebug(!showDebug)}
@@ -2258,19 +2194,6 @@ function App() {
           <button className="btn" onClick={ws.connect}>
             Se connecter au WebSocket
           </button>
-        </div>
-      )}
-
-      {ws.ready && !sshConnected && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 20,
-            color: "var(--orange)",
-            fontSize: ".9rem",
-          }}
-        >
-          ⚠️ SSH requis uniquement pour le panneau Terminal (a droite)
         </div>
       )}
 
@@ -2305,7 +2228,6 @@ function App() {
           {/* --- Right: System info + Terminal --- */}
           <div className="right-panel">
             <SystemInfoPanel ws={ws} disabled={wsOnlyDis} />
-            <TerminalPanel ws={ws} disabled={terminalDis} />
           </div>
         </div>
       )}

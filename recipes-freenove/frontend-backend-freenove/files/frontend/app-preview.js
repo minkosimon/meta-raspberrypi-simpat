@@ -39,13 +39,10 @@ function useWebSocket(url) {
 
   const logsRef = useRef([]);
   const logListeners = useRef(new Set());
-  const addLog = useCallback(
-    (entry) => {
-      logsRef.current = [...logsRef.current.slice(-499), entry];
-      logListeners.current.forEach((fn) => fn(logsRef.current));
-    },
-    [],
-  );
+  const addLog = useCallback((entry) => {
+    logsRef.current = [...logsRef.current.slice(-499), entry];
+    logListeners.current.forEach((fn) => fn(logsRef.current));
+  }, []);
 
   const send = useCallback(
     (action, params = {}) => {
@@ -147,97 +144,6 @@ function ConnectionBar({ ws }) {
       },
       "Commandes materiel via WebSocket",
     ),
-  );
-}
-
-function SshPanel({ ws, sshConnected, setSshConnected }) {
-  const [host, setHost] = useState("192.168.10.22");
-  const [user, setUser] = useState("root");
-  const [pass, setPass] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [output, setOutput] = useState("");
-
-  const handleSSH = async () => {
-    setBusy(true);
-    if (sshConnected) {
-      const res = await ws.send("disconnect");
-      if (res.status === "ok") setSshConnected(false);
-      setOutput(JSON.stringify(res.data || res.message || res, null, 2));
-    } else {
-      const res = await ws.send("connect", {
-        host,
-        user,
-        password: pass || undefined,
-      });
-      if (res.status === "ok") setSshConnected(true);
-      setOutput(JSON.stringify(res.data || res.message || res, null, 2));
-    }
-    setBusy(false);
-  };
-
-  return h(
-    Card,
-    { icon: "🔐", title: "Connexion SSH", badge: "Terminal" },
-    h(
-      "div",
-      { className: "field" },
-      h("label", null, "IP carte"),
-      h("input", {
-        value: host,
-        onChange: (e) => setHost(e.target.value),
-        placeholder: "192.168.10.22",
-      }),
-    ),
-    h(
-      "div",
-      { className: "field-row" },
-      h(
-        "div",
-        { className: "field", style: { flex: 1 } },
-        h("label", null, "User"),
-        h("input", {
-          value: user,
-          onChange: (e) => setUser(e.target.value),
-          placeholder: "root",
-        }),
-      ),
-      h(
-        "div",
-        { className: "field", style: { flex: 1 } },
-        h("label", null, "Password"),
-        h("input", {
-          type: "password",
-          value: pass,
-          onChange: (e) => setPass(e.target.value),
-          placeholder: "mot de passe",
-        }),
-      ),
-    ),
-    h(
-      "div",
-      { style: { display: "flex", alignItems: "center", gap: 8 } },
-      h(
-        "button",
-        {
-          className: "btn " + (sshConnected ? "danger" : "success"),
-          onClick: handleSSH,
-          disabled: !ws.ready || busy,
-        },
-        sshConnected ? "Deconnecter SSH" : "Connecter SSH",
-      ),
-      h("span", { className: "status-dot " + (sshConnected ? "on" : "off") }),
-      h(
-        "span",
-        {
-          style: {
-            fontSize: ".82rem",
-            color: sshConnected ? "#22c55e" : "#ef4444",
-          },
-        },
-        sshConnected ? "SSH OK" : "SSH OFF",
-      ),
-    ),
-    output && h("div", { className: "output" }, output),
   );
 }
 
@@ -2177,6 +2083,23 @@ function SystemInfoPanel({ ws, disabled }) {
     : info.fan_active
       ? "#22c55e"
       : "#f59e0b";
+  const diskFreeGb =
+    info?.disk?.free_mb != null ? (info.disk.free_mb / 1024).toFixed(1) : null;
+  const diskTotalGb =
+    info?.disk?.total_mb != null
+      ? (info.disk.total_mb / 1024).toFixed(1)
+      : null;
+  const ramUsagePercent =
+    info?.memory_kb?.MemTotal && info?.memory_kb?.MemAvailable != null
+      ? Math.round(
+          ((info.memory_kb.MemTotal - info.memory_kb.MemAvailable) /
+            info.memory_kb.MemTotal) *
+            1000,
+        ) / 10
+      : null;
+  const bootModeLabel = info?.boot_mode?.mode
+    ? info.boot_mode.mode.toUpperCase()
+    : "—";
   const ntp = info?.ntp;
   const ntpStatusLabel = !ntp?.available
     ? "Indisponible"
@@ -2202,246 +2125,242 @@ function SystemInfoPanel({ ws, disabled }) {
       setFanBusy(false);
     }
   };
-    return h(
-      React.Fragment,
-      null,
-      h(
-        Card,
-        { icon: "🖥️", title: "Systeme", badge: "Info" },
-        h(
-          "div",
-          { className: "field", style: { marginBottom: 8 } },
-          h("label", null, "Intervalle de rafraichissement (s)"),
-          h("input", {
-            type: "number",
-            min: 1,
-            max: 3600,
-            value: refreshSec,
-            onChange: (e) =>
-              setRefreshSec(Math.max(1, Math.min(3600, +e.target.value || 1))),
-            disabled: disabled,
-          }),
-        ),
-        h(
-          "div",
-          {
-            style: {
-              fontSize: ".78rem",
-              color: "var(--text-dim)",
-              marginBottom: 8,
-            },
-          },
-          "Auto-refresh actif: toutes les " + refreshSec + "s",
-        ),
-        info &&
-          h(
-            "div",
-            { className: "status-pairs" },
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Hostname"),
-              h("div", { className: "status-value" }, info.hostname),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Kernel"),
-              h("div", { className: "status-value compact" }, info.kernel),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "CPU Temp"),
-              h(
-                "div",
-                {
-                  className: "status-value",
-                  style: { color: info.cpu_temp_c > 70 ? "#ef4444" : "#22c55e" },
-                },
-                info.cpu_temp_c + "\u00B0C",
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "CPU Charge"),
-              h(
-                "div",
-                { className: "status-value" },
-                info.cpu_usage_percent != null ? info.cpu_usage_percent + "%" : "—",
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Uptime"),
-              h("div", { className: "status-value" }, fmtUp(info.uptime_s)),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Arch"),
-              h("div", { className: "status-value" }, info.arch || "—"),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Disque"),
-              h(
-                "div",
-                { className: "status-value compact" },
-                info.disk ? info.disk.free_mb + " MB" : "—",
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Fan"),
-              h(
-                "div",
-                { className: "status-value", style: { color: fanColor } },
-                fanLabel,
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Vitesse Fan"),
-              h(
-                "div",
-                { className: "status-value compact" },
-                info.fan_rpm != null ? info.fan_rpm + " RPM" : "—",
-              ),
-            ),
-          ),
-        info &&
-          h(
-            "button",
-            {
-              className: "btn " + (info.fan_active ? "danger" : "success"),
-              onClick: toggleFan,
-              disabled: disabled || fanBusy || !info.fan_available,
-              style: { width: "100%", marginTop: 10 },
-            },
-            info.fan_active
-              ? "Desactiver le ventilateur"
-              : "Activer le ventilateur",
-          ),
-        output && h("div", { className: "output" }, output),
-      ),
-      h(
-        Card,
-        { icon: "🕒", title: "Status NTP", badge: "Chrony" },
-        h(
-          "div",
-          {
-            style: {
-              fontSize: ".78rem",
-              color: "var(--text-dim)",
-              marginBottom: 8,
-            },
-          },
-          "Rafraichissement synchronise avec Systeme: toutes les " + refreshSec + "s",
-        ),
-        info &&
-          h(
-            "div",
-            { className: "status-pairs" },
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Status NTP"),
-              h(
-                "div",
-                { className: "status-value", style: { color: ntpStatusColor } },
-                ntpStatusLabel,
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Source clock"),
-              h("div", { className: "status-value" }, (ntp && ntp.source_clock) || "—"),
-            ),
-            h(
-              "div",
-              { className: "status-cell full" },
-              h("div", { className: "status-label" }, "UTC time carte"),
-              h(
-                "div",
-                { className: "status-value compact" },
-                info.current_utc_time || "—",
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell full" },
-              h("div", { className: "status-label" }, "Derniere synchro NTP (UTC)"),
-              h(
-                "div",
-                { className: "status-value compact" },
-                (ntp && ntp.reference_time_utc) || "—",
-              ),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Update interval"),
-              h("div", { className: "status-value" }, (ntp && ntp.update_interval) || "—"),
-            ),
-            h(
-              "div",
-              { className: "status-cell" },
-              h("div", { className: "status-label" }, "Last offset"),
-              h("div", { className: "status-value compact" }, (ntp && ntp.last_offset) || "—"),
-            ),
-          ),
-      ),
-    );
-  }
-function TerminalPanel({ ws, disabled }) {
-  const [cmd, setCmd] = useState("");
-  const [history, setHistory] = useState([]);
-  const run = async () => {
-    if (!cmd.trim()) return;
-    setHistory((h) => [...h, "$ " + cmd]);
-    const res = await ws.send("run_command", { command: cmd });
-    if (res.status === "ok" && res.data) {
-      if (res.data.stdout) setHistory((h) => [...h, res.data.stdout]);
-      if (res.data.stderr)
-        setHistory((h) => [...h, "[stderr] " + res.data.stderr]);
-    } else {
-      setHistory((h) => [
-        ...h,
-        "[error] " + (res.message || JSON.stringify(res)),
-      ]);
-    }
-    setCmd("");
-  };
   return h(
-    Card,
-    { icon: "⌨️", title: "Terminal SSH", badge: "Shell" },
+    React.Fragment,
+    null,
     h(
-      "div",
-      { className: "output", style: { minHeight: 100 } },
-      history.length === 0 ? "Entrez une commande..." : history.join("\n"),
+      Card,
+      { icon: "🖥️", title: "Systeme", badge: "Info" },
+      h(
+        "div",
+        { className: "field", style: { marginBottom: 8 } },
+        h("label", null, "Intervalle de rafraichissement (s)"),
+        h("input", {
+          type: "number",
+          min: 1,
+          max: 3600,
+          value: refreshSec,
+          onChange: (e) =>
+            setRefreshSec(Math.max(1, Math.min(3600, +e.target.value || 1))),
+          disabled: disabled,
+        }),
+      ),
+      h(
+        "div",
+        {
+          style: {
+            fontSize: ".78rem",
+            color: "var(--text-dim)",
+            marginBottom: 8,
+          },
+        },
+        "Auto-refresh actif: toutes les " + refreshSec + "s",
+      ),
+      info &&
+        h(
+          "div",
+          { className: "status-pairs" },
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Hostname"),
+            h("div", { className: "status-value" }, info.hostname),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Kernel"),
+            h("div", { className: "status-value compact" }, info.kernel),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "CPU Temp"),
+            h(
+              "div",
+              {
+                className: "status-value",
+                style: { color: info.cpu_temp_c > 70 ? "#ef4444" : "#22c55e" },
+              },
+              info.cpu_temp_c + "\u00B0C",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "CPU Charge"),
+            h(
+              "div",
+              { className: "status-value" },
+              info.cpu_usage_percent != null
+                ? info.cpu_usage_percent + "%"
+                : "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Uptime"),
+            h("div", { className: "status-value" }, fmtUp(info.uptime_s)),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "RAM Usage"),
+            h(
+              "div",
+              { className: "status-value" },
+              ramUsagePercent != null ? ramUsagePercent + "%" : "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Arch"),
+            h("div", { className: "status-value" }, info.arch || "—"),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Boot mode"),
+            h("div", { className: "status-value" }, bootModeLabel),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Stockage libre"),
+            h(
+              "div",
+              { className: "status-value compact" },
+              diskFreeGb != null && diskTotalGb != null
+                ? diskFreeGb + " Go / " + diskTotalGb + " Go"
+                : "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Fan"),
+            h(
+              "div",
+              { className: "status-value", style: { color: fanColor } },
+              fanLabel,
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Vitesse Fan"),
+            h(
+              "div",
+              { className: "status-value compact" },
+              info.fan_rpm != null ? info.fan_rpm + " RPM" : "—",
+            ),
+          ),
+        ),
+      info &&
+        h(
+          "button",
+          {
+            className: "btn " + (info.fan_active ? "danger" : "success"),
+            onClick: toggleFan,
+            disabled: disabled || fanBusy || !info.fan_available,
+            style: { width: "100%", marginTop: 10 },
+          },
+          info.fan_active
+            ? "Desactiver le ventilateur"
+            : "Activer le ventilateur",
+        ),
+      output && h("div", { className: "output" }, output),
     ),
     h(
-      "div",
-      { className: "terminal-input" },
-      h("input", {
-        value: cmd,
-        onChange: (e) => setCmd(e.target.value),
-        placeholder: "Commande...",
-        onKeyDown: (e) => e.key === "Enter" && !disabled && run(),
-        disabled,
-      }),
-      h("button", { className: "btn", onClick: run, disabled }, "Run"),
+      Card,
+      { icon: "🕒", title: "Status NTP", badge: "Chrony" },
+      h(
+        "div",
+        {
+          style: {
+            fontSize: ".78rem",
+            color: "var(--text-dim)",
+            marginBottom: 8,
+          },
+        },
+        "Rafraichissement synchronise avec Systeme: toutes les " +
+          refreshSec +
+          "s",
+      ),
+      info &&
+        h(
+          "div",
+          { className: "status-pairs" },
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Status NTP"),
+            h(
+              "div",
+              { className: "status-value", style: { color: ntpStatusColor } },
+              ntpStatusLabel,
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Source clock"),
+            h(
+              "div",
+              { className: "status-value" },
+              (ntp && ntp.source_clock) || "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell full" },
+            h("div", { className: "status-label" }, "UTC time carte"),
+            h(
+              "div",
+              { className: "status-value compact" },
+              info.current_utc_time || "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell full" },
+            h(
+              "div",
+              { className: "status-label" },
+              "Derniere synchro NTP (UTC)",
+            ),
+            h(
+              "div",
+              { className: "status-value compact" },
+              (ntp && ntp.reference_time_utc) || "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Update interval"),
+            h(
+              "div",
+              { className: "status-value" },
+              (ntp && ntp.update_interval) || "—",
+            ),
+          ),
+          h(
+            "div",
+            { className: "status-cell" },
+            h("div", { className: "status-label" }, "Last offset"),
+            h(
+              "div",
+              { className: "status-value compact" },
+              (ntp && ntp.last_offset) || "—",
+            ),
+          ),
+        ),
     ),
   );
 }
-
 /* ===================================================================
  *  DEBUG PANEL — bottom log viewer
  * =================================================================== */
@@ -2560,7 +2479,6 @@ const NAV_ITEMS = [
   { section: "🔧 Systeme" },
   { id: "gpio", icon: "💡", label: "GPIO Control", badge: "BCM" },
   { id: "pwm", icon: "〰️", label: "PWM Control", badge: "GPIO" },
-  { id: "terminal", icon: "⌨️", label: "Terminal SSH", badge: "Shell" },
 ];
 
 /* ===================================================================
@@ -2574,11 +2492,9 @@ function App() {
     (window.location.port || 8080) +
     "/ws";
   const ws = useWebSocket(wsUrl);
-  const [sshConnected, setSshConnected] = useState(false);
   const [activePanel, setActivePanel] = useState("gpio");
   const [showDebug, setShowDebug] = useState(false);
   const wsOnlyDis = !ws.ready;
-  const terminalDis = !ws.ready || !sshConnected;
 
   /* Map panel id -> component */
   const PANELS = {
@@ -2610,7 +2526,6 @@ function App() {
     adc: h(AdcPanel, { ws, disabled: wsOnlyDis }),
     gpio: h(GpioPanel, { ws, disabled: wsOnlyDis }),
     pwm: h(PwmPanel, { ws, disabled: wsOnlyDis }),
-    terminal: h(TerminalPanel, { ws, disabled: terminalDis }),
   };
 
   return h(
@@ -2668,21 +2583,6 @@ function App() {
       ),
 
     ws.ready &&
-      !sshConnected &&
-      h(
-        "div",
-        {
-          style: {
-            textAlign: "center",
-            padding: 20,
-            color: "#f59e0b",
-            fontSize: ".9rem",
-          },
-        },
-        "\u26A0\uFE0F SSH requis uniquement pour le panneau Terminal (a droite)",
-      ),
-
-    ws.ready &&
       h(
         "div",
         { className: "app-layout" },
@@ -2731,9 +2631,7 @@ function App() {
         h(
           "div",
           { className: "right-panel" },
-          h(SshPanel, { ws, sshConnected, setSshConnected }),
           h(SystemInfoPanel, { ws, disabled: wsOnlyDis }),
-          h(TerminalPanel, { ws, disabled: terminalDis }),
         ),
       ),
 

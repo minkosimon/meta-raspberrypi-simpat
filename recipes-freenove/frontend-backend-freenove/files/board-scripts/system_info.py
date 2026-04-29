@@ -14,6 +14,42 @@ from ntp_status import read_ntp_status
 FAN_INPUT_PATH = "/sys/class/hwmon/hwmon1/fan1_input"
 
 
+def read_kernel_cmdline() -> list[str]:
+    try:
+        with open("/proc/cmdline") as f:
+            return f.read().split()
+    except FileNotFoundError:
+        return []
+
+
+def read_kernel_arg(name: str, cmdline: list[str]) -> str | None:
+    prefix = f"{name}="
+    for token in cmdline:
+        if token.startswith(prefix):
+            return token.split("=", 1)[1]
+    return None
+
+
+def get_boot_mode() -> dict:
+    cmdline = read_kernel_cmdline()
+    root_arg = read_kernel_arg("root", cmdline)
+    nfs_root = read_kernel_arg("nfsroot", cmdline)
+
+    mode = "unknown"
+    if root_arg == "/dev/nfs" or nfs_root:
+        mode = "rootfs"
+    elif root_arg and root_arg.startswith("/dev/mmcblk0"):
+        mode = "sdcard"
+    elif root_arg and root_arg.startswith("/dev/mmcblk1"):
+        mode = "emmc"
+
+    return {
+        "mode": mode,
+        "root_arg": root_arg,
+        "nfs_root": nfs_root,
+    }
+
+
 def get_cpu_temp() -> float:
     try:
         with open("/sys/class/thermal/thermal_zone0/temp") as f:
@@ -110,6 +146,7 @@ def main():
         "uptime_s": get_uptime(),
         "disk": get_disk(),
         "current_utc_time": get_current_utc_time(),
+        "boot_mode": get_boot_mode(),
         "fan_rpm": fan_rpm,
         "fan_active": fan_rpm is not None and fan_rpm > 0,
         "fan_available": fan_rpm is not None,
