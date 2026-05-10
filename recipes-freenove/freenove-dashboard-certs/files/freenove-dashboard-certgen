@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+CERT_DIR="/etc/ssl/freenove"
+CERT_PATH="$CERT_DIR/freenove-dashboard.crt"
+KEY_PATH="$CERT_DIR/freenove-dashboard.key"
+ENV_FILE="/etc/default/freenove-dashboard-tls"
+PORT="${FNK_WS_PORT:-8080}"
+
+mkdir -p "$CERT_DIR"
+chmod 700 "$CERT_DIR"
+
+hostname_short="$(hostname -s 2>/dev/null || hostname)"
+hostname_fqdn="$(hostname -f 2>/dev/null || echo "$hostname_short")"
+
+san_entries=("DNS:localhost" "IP:127.0.0.1")
+origin_entries=("https://localhost:${PORT}" "https://127.0.0.1:${PORT}")
+
+add_dns_entry() {
+    local value="$1"
+    local entry
+
+    if [[ -z "$value" ]]; then
+        return
+    fi
+
+    entry="DNS:${value}"
+    if [[ ! " ${san_entries[*]} " =~ " ${entry} " ]]; then
+        san_entries+=("$entry")
+    fi
+
+    entry="https://${value}:${PORT}"
+    if [[ ! " ${origin_entries[*]} " =~ " ${entry} " ]]; then
+        origin_entries+=("$entry")
+    fi
+}
+
+add_ip_entry() {
+    local value="$1"
+    local san_entry="IP:${value}"
+    local origin_entry="https://${value}:${PORT}"
+
+    if [[ -z "$value" ]]; then
+        return
+    fi
+
+    if [[ ! " ${san_entries[*]} " =~ " ${san_entry} " ]]; then
+        san_entries+=("$san_entry")
+    fi
+
+    if [[ ! " ${origin_entries[*]} " =~ " ${origin_entry} " ]]; then
+        origin_entries+=("$origin_entry")
+    fi
+}
+
+add_dns_entry "$hostname_short"
+add_dns_entry "$hostname_fqdn"
+
+for ip in $(hostname -I 2>/dev/null || true); do
+    add_ip_entry "$ip"
+done
+
+san_value="$(IFS=,; echo "${san_entries[*]}")"
+allowed_origins="$(IFS=,; echo "${origin_entries[*]}")"
+
+if [[ ! -s "$CERT_PATH" || ! -s "$KEY_PATH" ]]; then
+    openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+        -keyout "$KEY_PATH" \
+        -out "$CERT_PATH" \
+        -subj "/CN=${hostname_fqdn}" \
+        -addext "subjectAltName=${san_value}"
+fi
+
+chmod 600 "$KEY_PATH"
+chmod 644 "$CERT_PATH"
+
+cat > "$ENV_FILE" <<EOF
+FNK_WS_TLS=1
+FNK_WS_TLS_CERT=${CERT_PATH}
+FNK_WS_TLS_KEY=${KEY_PATH}
+FNK_WS_ALLOWED_ORIGINS=${allowed_origins}
+EOF
+
+chmod 600 "$ENV_FILE"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate TLS certificate for Freenove dashboard
+Before=freenove-dashboard.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/freenove-dashboard-certgen
+
+[Install]
+WantedBy=multi-user.target
