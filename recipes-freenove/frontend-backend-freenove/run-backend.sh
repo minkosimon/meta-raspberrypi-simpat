@@ -17,10 +17,23 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/files/backend"
 FRONTEND_DIR="$SCRIPT_DIR/files/frontend"
+PYTHON_BIN="${FNK_PYTHON_BIN:-}"
+
+if [ -z "$PYTHON_BIN" ] && [ -x "$BACKEND_DIR/venv/bin/python3" ]; then
+    PYTHON_BIN="$BACKEND_DIR/venv/bin/python3"
+fi
+
+if [ -z "$PYTHON_BIN" ]; then
+    PYTHON_BIN="python3"
+fi
 
 # Configuration from arguments or environment
 PORT="${1:-${FNK_WS_PORT:-8080}}"
 WS_HOST="${FNK_WS_HOST:-0.0.0.0}"
+TLS_ENABLED="${FNK_WS_TLS:-0}"
+TLS_CERT="${FNK_WS_TLS_CERT:-}"
+TLS_KEY="${FNK_WS_TLS_KEY:-}"
+ALLOWED_ORIGINS="${FNK_WS_ALLOWED_ORIGINS:-}"
 SSH_HOST="${FNK_SSH_HOST:-192.168.10.22}"
 SSH_PORT="${FNK_SSH_PORT:-22}"
 SSH_USER="${FNK_SSH_USER:-root}"
@@ -65,27 +78,62 @@ export FNK_FRONTEND_DIR="$FRONTEND_DIR"
 export FNK_SCRIPTS_DIR="$SCRIPTS_DIR"
 export FNK_WS_HOST="$WS_HOST"
 export FNK_WS_PORT="$PORT"
+export FNK_WS_TLS="$TLS_ENABLED"
+export FNK_WS_TLS_CERT="$TLS_CERT"
+export FNK_WS_TLS_KEY="$TLS_KEY"
+export FNK_WS_ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
 export FNK_SSH_HOST="$SSH_HOST"
 export FNK_SSH_PORT="$SSH_PORT"
 export FNK_SSH_USER="$SSH_USER"
 
+if [[ "$TLS_ENABLED" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+    HTTP_SCHEME="https"
+    WS_SCHEME="wss"
+
+    if [ -z "$TLS_CERT" ] || [ -z "$TLS_KEY" ]; then
+        echo -e "${RED}❌ TLS is enabled but FNK_WS_TLS_CERT or FNK_WS_TLS_KEY is missing${NC}"
+        exit 1
+    fi
+
+    if [ ! -f "$TLS_CERT" ]; then
+        echo -e "${RED}❌ TLS certificate not found: $TLS_CERT${NC}"
+        exit 1
+    fi
+
+    if [ ! -f "$TLS_KEY" ]; then
+        echo -e "${RED}❌ TLS key not found: $TLS_KEY${NC}"
+        exit 1
+    fi
+else
+    HTTP_SCHEME="http"
+    WS_SCHEME="ws"
+fi
+
 echo -e "Configuration:"
 echo -e "  ${GREEN}✓ Backend Directory:${NC}  $BACKEND_DIR"
 echo -e "  ${GREEN}✓ Frontend Directory:${NC}  $FRONTEND_DIR"
-echo -e "  ${GREEN}✓ WebSocket URL:${NC}      ws://$WS_HOST:$PORT/ws"
-echo -e "  ${GREEN}✓ HTTP URL:${NC}           http://$WS_HOST:$PORT/"
+echo -e "  ${GREEN}✓ Python:${NC}             $PYTHON_BIN"
+echo -e "  ${GREEN}✓ WebSocket URL:${NC}      $WS_SCHEME://$WS_HOST:$PORT/ws"
+echo -e "  ${GREEN}✓ HTTP URL:${NC}           $HTTP_SCHEME://$WS_HOST:$PORT/"
+if [[ "$TLS_ENABLED" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+    echo -e "  ${GREEN}✓ TLS Cert:${NC}           ${TLS_CERT:-<missing>}"
+    echo -e "  ${GREEN}✓ TLS Key:${NC}            ${TLS_KEY:-<missing>}"
+fi
+if [ -n "$ALLOWED_ORIGINS" ]; then
+    echo -e "  ${GREEN}✓ Allowed Origins:${NC}    $ALLOWED_ORIGINS"
+fi
 echo -e "  ${GREEN}✓ SSH Target:${NC}         $SSH_USER@$SSH_HOST:$SSH_PORT"
 echo -e "  ${GREEN}✓ Board Scripts:${NC}      $SCRIPTS_DIR"
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
-echo -e "📱 Open: ${GREEN}http://localhost:${PORT}/${NC}"
+echo -e "📱 Open: ${GREEN}$HTTP_SCHEME://localhost:${PORT}/${NC}"
 echo -e "⌨️  Press Ctrl+C to stop"
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Check Python 3 availability
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Python 3 is not installed${NC}"
+# Check Python availability
+if ! command -v "$PYTHON_BIN" &> /dev/null; then
+    echo -e "${RED}❌ Python interpreter not found: $PYTHON_BIN${NC}"
     exit 1
 fi
 
@@ -93,4 +141,4 @@ fi
 cd "$BACKEND_DIR"
 
 # Run the backend app with exported environment variables
-exec python3 app.py
+exec "$PYTHON_BIN" app.py

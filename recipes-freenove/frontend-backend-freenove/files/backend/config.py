@@ -3,9 +3,17 @@ Configuration for the Freenove FNK0054 Test Backend.
 """
 import os
 
+
+def _parse_origins(value: str) -> tuple[str, ...]:
+    return tuple(origin.strip().rstrip("/") for origin in value.split(",") if origin.strip())
+
 # WebSocket / HTTP server
 WS_HOST = os.environ.get("FNK_WS_HOST", "0.0.0.0")
 WS_PORT = int(os.environ.get("FNK_WS_PORT", "8080"))
+WS_TLS_ENABLED = os.environ.get("FNK_WS_TLS", "0").lower() in {"1", "true", "yes", "on"}
+WS_TLS_CERT = os.environ.get("FNK_WS_TLS_CERT", "")
+WS_TLS_KEY = os.environ.get("FNK_WS_TLS_KEY", "")
+WS_ALLOWED_ORIGINS = _parse_origins(os.environ.get("FNK_WS_ALLOWED_ORIGINS", ""))
 
 # SSH connection to the board
 SSH_HOST = os.environ.get("FNK_SSH_HOST", "192.168.10.22")

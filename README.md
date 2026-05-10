@@ -351,7 +351,7 @@ flowchart TD
 
 The layer also includes a complete **Frontend + Backend test dashboard** for the Freenove FNK0054 kit:
 
-- **Frontend:** React single-page UI served on port 8080
+- **Frontend:** React single-page UI served on port 8080 (`http://` by default, `https://` when `freenove-dashboard-certs` is installed)
 - **Backend:** Python `aiohttp` + WebSocket API + SSH bridge (`paramiko`)
 - **Board-side scripts:** Installed under `/opt/freenove/` for GPIO, PWM, sensors, and diagnostics
 

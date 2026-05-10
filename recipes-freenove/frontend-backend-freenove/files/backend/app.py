@@ -6,11 +6,28 @@ Architecture:
     React Frontend  <--WebSocket (8080)-->  Backend Bridge  <--SSH-->  Board
 """
 import asyncio
+import glob
 import json
 import logging
 import os
 import shlex
+import ssl
 import sys
+from urllib.parse import urlsplit
+
+
+def _bootstrap_local_venv() -> None:
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    site_packages_glob = os.path.join(
+        backend_dir, "venv", "lib*", "python*", "site-packages"
+    )
+
+    for site_packages in sorted(glob.glob(site_packages_glob)):
+        if site_packages not in sys.path:
+            sys.path.insert(0, site_packages)
+
+
+_bootstrap_local_venv()
 
 from aiohttp import web
 
@@ -30,6 +47,48 @@ LOCAL_SSH_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 def _should_run_locally() -> bool:
     return config.SSH_HOST in LOCAL_SSH_HOSTS
+
+
+def _build_ssl_context() -> ssl.SSLContext | None:
+    if not config.WS_TLS_ENABLED:
+        return None
+
+    if not config.WS_TLS_CERT or not config.WS_TLS_KEY:
+        raise RuntimeError(
+            "TLS is enabled but FNK_WS_TLS_CERT or FNK_WS_TLS_KEY is missing"
+        )
+
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.load_cert_chain(config.WS_TLS_CERT, config.WS_TLS_KEY)
+    return ssl_context
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().rstrip("/")
+
+
+def _is_origin_allowed(request: web.Request) -> bool:
+    origin = request.headers.get("Origin")
+    if not origin:
+        return True
+
+    allowed_origins = set(config.WS_ALLOWED_ORIGINS)
+    if not allowed_origins:
+        allowed_origins.add(f"{request.scheme}://{request.host}".rstrip("/"))
+
+    normalized_origin = _normalize_origin(origin)
+    if normalized_origin in allowed_origins:
+        return True
+
+    try:
+        parsed_origin = urlsplit(normalized_origin)
+    except ValueError:
+        return False
+
+    if not parsed_origin.scheme or not parsed_origin.netloc:
+        return False
+
+    return parsed_origin.netloc.lower() == request.host.lower()
 
 
 async def _run_local_command(command: str, timeout: int = 30) -> dict:
@@ -92,6 +151,14 @@ async def _run_board_script(script_name: str, args: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    if not _is_origin_allowed(request):
+        logger.warning(
+            "Rejected WebSocket connection from origin=%s host=%s",
+            request.headers.get("Origin"),
+            request.host,
+        )
+        raise web.HTTPForbidden(text="origin not allowed")
+
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     logger.info("WebSocket client connected from %s", request.remote)
@@ -225,15 +292,22 @@ async def dispatch(action: str, params: dict) -> dict:
 
     # --- LED RGB ---
     if action == "led_rgb":
-        r_pin = int(params.get("r_pin", 17))
-        g_pin = int(params.get("g_pin", 27))
-        b_pin = int(params.get("b_pin", 22))
+        r_pin = int(params.get("r_pin", 5))
+        g_pin = int(params.get("g_pin", 6))
+        b_pin = int(params.get("b_pin", 13))
         r = int(params.get("r", 0))
         g = int(params.get("g", 0))
         b = int(params.get("b", 0))
-        return await _run_board_script(
-            "led_rgb.py", f"{r_pin} {g_pin} {b_pin} {r} {g} {b}"
+        # Kill any leftover led_rgb.py instances (pkill absent on BusyBox).
+        # The sysfs brightness write is persistent, so the new script just
+        # writes and exits — no daemon needed.
+        script = f"{config.BOARD_SCRIPTS_DIR}/led_rgb.py"
+        kill_cmd = (
+            "for _P in $(ps | grep led_rgb | grep -v grep | awk '{print $1}');"
+            " do kill -9 $_P 2>/dev/null; done"
         )
+        cmd = f"{kill_cmd}; python3 {script} {r_pin} {g_pin} {b_pin} {r} {g} {b}"
+        return await _run_board_command(cmd, timeout=10)
 
     # --- LED Matrix 8x8 (74HC595) ---
     if action == "led_matrix":
@@ -314,10 +388,21 @@ def create_app() -> web.Application:
 
 def main():
     app = create_app()
+    ssl_context = _build_ssl_context()
+    public_scheme = "https" if ssl_context else "http"
+    websocket_scheme = "wss" if ssl_context else "ws"
     logger.info(
-        "Starting Freenove FNK0054 Backend on %s:%d", config.WS_HOST, config.WS_PORT
+        "Starting Freenove FNK0054 Backend on %s://%s:%d (WebSocket %s://%s:%d/ws)",
+        public_scheme,
+        config.WS_HOST,
+        config.WS_PORT,
+        websocket_scheme,
+        config.WS_HOST,
+        config.WS_PORT,
     )
-    web.run_app(app, host=config.WS_HOST, port=config.WS_PORT)
+    if config.WS_ALLOWED_ORIGINS:
+        logger.info("Allowed WebSocket origins: %s", ", ".join(config.WS_ALLOWED_ORIGINS))
+    web.run_app(app, host=config.WS_HOST, port=config.WS_PORT, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

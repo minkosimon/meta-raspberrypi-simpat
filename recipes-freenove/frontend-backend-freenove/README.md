@@ -104,18 +104,131 @@ export FNK_FRONTEND_DIR=$(pwd)/../frontend
 python3 app.py
 ```
 
-Ouvrir `http://localhost:8080` dans le navigateur.
+Si le navigateur tourne sur la meme machine que le backend, ouvrir `http://localhost:8080`.
+Si le backend tourne sur une autre machine ou sur la carte, ouvrir `http://<IP_OU_HOST_DU_BACKEND>:8080`.
+
+### Mode WebSocket securise (WSS)
+
+Le backend supporte maintenant TLS natif pour servir `https://` et `wss://` sur le meme port.
+
+```bash
+# Exemple de certificat auto-signe pour developpement
+mkdir -p certs
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
+  -keyout certs/freenove.key \
+  -out certs/freenove.crt \
+  -subj "/CN=localhost"
+
+export FNK_WS_TLS=1
+export FNK_WS_TLS_CERT=$(pwd)/certs/freenove.crt
+export FNK_WS_TLS_KEY=$(pwd)/certs/freenove.key
+export FNK_WS_ALLOWED_ORIGINS=https://localhost:8080
+python3 app.py
+```
+
+Dans ce mode:
+
+- l'interface est servie en `https://`
+- le navigateur ouvre automatiquement le WebSocket en `wss://`
+- le backend refuse les connexions navigateur venant d'une origine differente si `FNK_WS_ALLOWED_ORIGINS` est defini
+
+### Creation manuelle d'un certificat
+
+Pour un certificat de developpement local:
+
+```bash
+mkdir -p certs
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
+  -keyout certs/freenove-local.key \
+  -out certs/freenove-local.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+Puis lancer le backend en TLS:
+
+```bash
+FNK_WS_TLS=1 \
+FNK_WS_TLS_CERT=$(pwd)/certs/freenove-local.crt \
+FNK_WS_TLS_KEY=$(pwd)/certs/freenove-local.key \
+FNK_WS_ALLOWED_ORIGINS=https://localhost:8080 \
+./run-backend.sh
+```
+
+Firefox affichera un avertissement tant que ce certificat auto-signe n'est pas ajoute comme certificat de confiance.
+
+### Ajouter le certificat comme certificat de confiance
+
+#### Firefox
+
+1. Ouvrir `about:preferences#privacy`
+2. Aller dans **Certificats**
+3. Cliquer sur **Voir les certificats**
+4. Onglet **Autorites**
+5. **Importer** puis choisir `certs/freenove-local.crt`
+6. Cocher la confiance pour identifier des sites web
+
+#### Linux (Debian/Ubuntu)
+
+```bash
+sudo cp certs/freenove-local.crt /usr/local/share/ca-certificates/freenove-local.crt
+sudo update-ca-certificates
+```
+
+Apres ca, `https://localhost:8080` ne devrait plus afficher d'avertissement de certificat sur les applications qui utilisent le magasin systeme.
+
+### Integration dans l'image Yocto
+
+Le dashboard principal installe maintenant un fichier d'environnement dans `/etc/default/freenove-dashboard`.
+La recette TLS se charge de generer le certificat sur la cible et d'ecrire `/etc/default/freenove-dashboard-tls`.
+
+Ajout dans `local.conf`:
+
+```conf
+IMAGE_INSTALL:append = " frontend-backend-freenove freenove-dashboard-certs"
+```
+
+Au premier boot, le service `freenove-dashboard-certgen.service`:
+
+- cree `/etc/ssl/freenove/freenove-dashboard.crt`
+- cree `/etc/ssl/freenove/freenove-dashboard.key`
+- active `FNK_WS_TLS=1`
+- ecrit les origines autorisees dans `/etc/default/freenove-dashboard-tls`
+
+### Recette Yocto de gestion des certificats
+
+La recette ajoutee est:
+
+- `recipes-freenove/freenove-dashboard-certs/freenove-dashboard-certs.bb`
+
+Elle installe:
+
+- un script `freenove-dashboard-certgen`
+- un service systemd `freenove-dashboard-certgen.service`
+
+Le certificat n'est pas embarque dans le depot ni dans la recette. Il est genere sur la cible au premier boot, ce qui evite de stocker une cle privee dans la couche Yocto.
 
 ### Mode Yocto (sur la carte)
 
-Ajouter la recette dans `local.conf` :
+Sans la recette TLS, ajouter la recette dans `local.conf` :
 
 ```
 IMAGE_INSTALL:append = " frontend-backend-freenove"
 ```
 
 Après déploiement, le service `freenove-dashboard` démarre automatiquement.
-Accéder au dashboard : `http://<IP_CARTE>:8080`
+Depuis un PC du réseau, accéder au dashboard : `http://<IP_CARTE>:8080`
+
+Avec TLS activé, ajouter dans `local.conf` :
+
+```conf
+IMAGE_INSTALL:append = " frontend-backend-freenove freenove-dashboard-certs"
+```
+
+Dans ce cas, le certificat est généré au premier boot et le dashboard est servi en HTTPS/WSS sur le meme port.
+Depuis un PC du réseau, accéder au dashboard : `https://<IP_CARTE>:8080`
+
+Important : `localhost:8080` ne fonctionne que si le navigateur s'exécute sur la meme machine que le backend. Depuis le poste de développement, il faut utiliser l'IP ou le nom d'hote de la carte.
 
 ## Protocole WebSocket
 

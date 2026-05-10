@@ -62,6 +62,7 @@ IMAGE_INSTALL:append = " \
     frontend-backend-freenove \
     chrony \
     chronyc \
+    freenove-dashboard-certs \
 "
 
 # ============================================================================

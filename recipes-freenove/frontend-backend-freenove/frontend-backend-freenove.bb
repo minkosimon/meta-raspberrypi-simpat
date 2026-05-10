@@ -33,6 +33,7 @@ SRC_URI = " \
     file://drivers/Makefile \
     file://drivers/freenove-overlay.dts \
     file://freenove-dashboard.service \
+    file://freenove-dashboard.env \
     file://freenove-driver.conf \
 "
 
@@ -95,6 +96,10 @@ do_install:append() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/freenove-dashboard.service ${D}${systemd_system_unitdir}/
 
+    # Runtime environment
+    install -d ${D}${sysconfdir}/default
+    install -m 0644 ${WORKDIR}/freenove-dashboard.env ${D}${sysconfdir}/default/freenove-dashboard
+
     # Module autoload
     install -d ${D}${sysconfdir}/modules-load.d
     install -m 0644 ${WORKDIR}/freenove-driver.conf ${D}${sysconfdir}/modules-load.d/
@@ -106,6 +111,7 @@ SYSTEMD_AUTO_ENABLE = "enable"
 FILES:${PN} += " \
     /opt/freenove \
     ${systemd_system_unitdir}/freenove-dashboard.service \
+    ${sysconfdir}/default/freenove-dashboard \
     /boot/overlays/freenove-overlay.dtbo \
     ${sysconfdir}/modules-load.d/freenove-driver.conf \
 "

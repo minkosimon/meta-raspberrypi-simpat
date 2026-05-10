@@ -5,6 +5,12 @@
  */
 const { useState, useEffect, useRef, useCallback } = React;
 
+function buildWebSocketUrl() {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location.host || `${window.location.hostname}:8080`;
+  return `${protocol}://${host}/ws`;
+}
+
 /* ===================================================================
  *  WebSocket hook
  * =================================================================== */
@@ -2153,7 +2159,7 @@ function PanelContent({ id, ws, disabled }) {
  *  MAIN APP — 3-column layout
  * =================================================================== */
 function App() {
-  const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws`;
+  const wsUrl = buildWebSocketUrl();
   const ws = useWebSocket(wsUrl);
   const [activePanel, setActivePanel] = useState("gpio");
   const [showDebug, setShowDebug] = useState(false);
