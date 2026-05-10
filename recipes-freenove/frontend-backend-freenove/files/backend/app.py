@@ -324,6 +324,13 @@ async def dispatch(action: str, params: dict) -> dict:
         bus = int(params.get("bus", config.I2C_BUS))
         return await _run_board_script("i2c_scan.py", str(bus))
 
+    if action == "lcd_write":
+        line1 = str(params.get("line1", ""))[:16]
+        line2 = str(params.get("line2", ""))[:16]
+        bus = int(params.get("bus", config.I2C_BUS))
+        addr = int(params.get("addr", "0x27"), 16) if isinstance(params.get("addr"), str) else int(params.get("addr", 0x27))
+        return await _run_board_script("lcd_write.py", f'"{line1}" "{line2}" {bus} 0x{addr:02x}')
+
     # --- ADC ---
     if action == "adc_read":
         channel = int(params.get("channel", 0))

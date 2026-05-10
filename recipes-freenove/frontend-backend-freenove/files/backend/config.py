@@ -40,5 +40,5 @@ AVAILABLE_GPIO_PINS = [
 # PWM-capable pins
 PWM_PINS = [12, 13, 18, 19]
 
-# I2C bus number
+# I2C bus number (RPi5/Yocto: Synopsys DesignWare on i2c-1 = GPIO2/GPIO3)
 I2C_BUS = 1
