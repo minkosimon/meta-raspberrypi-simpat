@@ -334,6 +334,14 @@ async def dispatch(action: str, params: dict) -> dict:
         await _run_board_command(cmd, timeout=5)
         return {"status": "ok", "value": safe}
 
+    # --- LED Bar Graph (74HC595) ---
+    if action == "led_bar":
+        level = int(params.get("level", 0))
+        safe = max(0, min(10, level))
+        script = f"{config.BOARD_SCRIPTS_DIR}/led_bar.py"
+        cmd = f"python3 {script} {safe}"
+        return await _run_board_command(cmd, timeout=10)
+
     # --- I2C ---
     if action == "i2c_scan":
         bus = int(params.get("bus", config.I2C_BUS))

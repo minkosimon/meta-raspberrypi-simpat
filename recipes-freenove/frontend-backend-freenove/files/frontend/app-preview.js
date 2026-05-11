@@ -972,10 +972,80 @@ function SevenSegPanel({ ws, disabled }) {
 function LedBarPanel({ ws, disabled }) {
   const [level, setLevel] = useState(5);
   const [output, setOutput] = useState("");
-  const send = async () => {
-    const res = await ws.send("led_bar", { level });
-    setOutput(JSON.stringify(res.data, null, 2));
+  const [oscillating, setOscillating] = useState(false);
+  const timerRef = useRef(null);
+  const levelRef = useRef(level);
+  const directionRef = useRef(1);
+
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const send = async (nextLevel = level, options = {}) => {
+    const { silent = false } = options;
+    const res = await ws.send("led_bar", { level: nextLevel });
+    if (!silent) setOutput(JSON.stringify(res.data, null, 2));
+    return res;
   };
+
+  const stopOscillation = (message = "Oscillation arretee") => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setOscillating(false);
+    setOutput(message);
+  };
+
+  const scheduleNextStep = () => {
+    timerRef.current = setTimeout(async () => {
+      let nextLevel = levelRef.current + directionRef.current;
+
+      if (nextLevel >= 10) {
+        nextLevel = 10;
+        directionRef.current = -1;
+      } else if (nextLevel <= 0) {
+        nextLevel = 0;
+        directionRef.current = 1;
+      }
+
+      setLevel(nextLevel);
+      levelRef.current = nextLevel;
+
+      try {
+        await send(nextLevel, { silent: true });
+        setOutput("Oscillation en cours: niveau " + nextLevel + "/10");
+      } catch (error) {
+        stopOscillation("Erreur pendant l'oscillation");
+        return;
+      }
+
+      if (timerRef.current) scheduleNextStep();
+    }, 250);
+  };
+
+  const startOscillation = async () => {
+    if (disabled || oscillating) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    directionRef.current = 1;
+    levelRef.current = 0;
+    setLevel(0);
+    setOscillating(true);
+
+    try {
+      await send(0, { silent: true });
+      setOutput("Oscillation en cours: niveau 0/10");
+      scheduleNextStep();
+    } catch (error) {
+      stopOscillation("Erreur au demarrage de l'oscillation");
+    }
+  };
+
   return h(
     Card,
     { icon: "📊", title: "LED Bar Graph", badge: "74HC595" },
@@ -991,7 +1061,9 @@ function LedBarPanel({ ws, disabled }) {
         return h("div", {
           key: i,
           className: cls,
-          onClick: () => setLevel(i + 1),
+          onClick: () => {
+            if (!oscillating) setLevel(i + 1);
+          },
           style: { flex: 1 },
         });
       }),
@@ -1005,18 +1077,43 @@ function LedBarPanel({ ws, disabled }) {
         min: 0,
         max: 10,
         value: level,
+        disabled: disabled || oscillating,
         onChange: (e) => setLevel(+e.target.value),
       }),
     ),
     h(
+      "div",
+      {
+        style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 },
+      },
+      h(
+        "button",
+        {
+          className: "btn",
+          onClick: send,
+          disabled: disabled || oscillating,
+        },
+        "Appliquer",
+      ),
+      h(
+        "button",
+        {
+          className: "btn",
+          onClick: startOscillation,
+          disabled: disabled || oscillating,
+        },
+        "Osciller",
+      ),
+    ),
+    h(
       "button",
       {
-        className: "btn",
-        onClick: send,
-        disabled,
-        style: { width: "100%", marginTop: 6 },
+        className: "btn danger",
+        onClick: () => stopOscillation(),
+        disabled: disabled || !oscillating,
+        style: { width: "100%", marginTop: 8 },
       },
-      "Appliquer",
+      "Stop",
     ),
     output && h("div", { className: "output" }, output),
   );
