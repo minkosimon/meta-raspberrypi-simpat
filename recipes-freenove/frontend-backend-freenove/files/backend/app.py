@@ -322,6 +322,18 @@ async def dispatch(action: str, params: dict) -> dict:
         await _run_board_command(cmd, timeout=5)
         return {"status": "ok", "pattern": safe}
 
+    # --- 4-Digit 7-Segment Display (74HC595) ---
+    if action == "seven_segment":
+        value = str(params.get("value", "0"))
+        safe = "".join(ch for ch in value if ch.isdigit())[-4:]
+        if not safe:
+            safe = "0"
+        safe = safe.rjust(4, "0")
+        kill_cmd = "for _P in $(ps | grep seven_segment.py | grep -v grep | awk '{print $1}'); do kill -9 $_P 2>/dev/null; done"
+        cmd = f"{kill_cmd}; sleep 0.1; nohup python3 {config.BOARD_SCRIPTS_DIR}/seven_segment.py {safe} > /dev/null 2>&1 &"
+        await _run_board_command(cmd, timeout=5)
+        return {"status": "ok", "value": safe}
+
     # --- I2C ---
     if action == "i2c_scan":
         bus = int(params.get("bus", config.I2C_BUS))
