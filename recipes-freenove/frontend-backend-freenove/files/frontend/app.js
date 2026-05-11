@@ -318,10 +318,276 @@ function Ws2812Panel({ ws, disabled }) {
 function LedMatrixPanel({ ws, disabled }) {
   const [grid, setGrid] = useState(Array(64).fill(false));
   const [output, setOutput] = useState("");
+  const [presetKey, setPresetKey] = useState("smile");
+  const [scrollText, setScrollText] = useState("HELLO");
+  const [scrollSpeed, setScrollSpeed] = useState(180);
+  const [scrolling, setScrolling] = useState(false);
+  const scrollStopRef = useRef(false);
+  const presets = [
+    {
+      key: "smile",
+      label: "Smile",
+      rows: [0x3c, 0x42, 0xa5, 0x81, 0xa5, 0x99, 0x42, 0x3c],
+    },
+    {
+      key: "heart",
+      label: "Coeur",
+      rows: [0x00, 0x66, 0xff, 0xff, 0xff, 0x7e, 0x3c, 0x18],
+    },
+    {
+      key: "arrow",
+      label: "Fleche",
+      rows: [0x18, 0x3c, 0x7e, 0xff, 0x18, 0x18, 0x18, 0x18],
+    },
+    {
+      key: "cross",
+      label: "Croix",
+      rows: [0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81],
+    },
+    {
+      key: "plus",
+      label: "Plus",
+      rows: [0x18, 0x18, 0x18, 0xff, 0xff, 0x18, 0x18, 0x18],
+    },
+    {
+      key: "triangle",
+      label: "Triangle",
+      rows: [0x18, 0x3c, 0x66, 0xc3, 0xff, 0x81, 0x81, 0x00],
+    },
+    {
+      key: "diamond",
+      label: "Losange",
+      rows: [0x18, 0x3c, 0x66, 0xc3, 0xc3, 0x66, 0x3c, 0x18],
+    },
+    {
+      key: "star",
+      label: "Etoile",
+      rows: [0x18, 0x99, 0x5a, 0x3c, 0x3c, 0x5a, 0x99, 0x18],
+    },
+    {
+      key: "circle",
+      label: "Cercle",
+      rows: [0x3c, 0x42, 0x81, 0x81, 0x81, 0x81, 0x42, 0x3c],
+    },
+    {
+      key: "house",
+      label: "Maison",
+      rows: [0x18, 0x3c, 0x66, 0xc3, 0xff, 0xdb, 0xdb, 0x00],
+    },
+    {
+      key: "check",
+      label: "Check",
+      rows: [0x00, 0x01, 0x03, 0x86, 0xcc, 0x78, 0x30, 0x00],
+    },
+    {
+      key: "checker",
+      label: "Damier",
+      rows: [0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55],
+    },
+    {
+      key: "frame",
+      label: "Cadre",
+      rows: [0xff, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0xff],
+    },
+    {
+      key: "wave",
+      label: "Vague",
+      rows: [0x80, 0xc1, 0x63, 0x36, 0x1c, 0x36, 0x63, 0xc1],
+    },
+    {
+      key: "digit0",
+      label: "0",
+      rows: [0x3c, 0x66, 0xc3, 0xdb, 0xdb, 0xc3, 0x66, 0x3c],
+    },
+    {
+      key: "digit1",
+      label: "1",
+      rows: [0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x3c, 0x3c],
+    },
+    {
+      key: "digit2",
+      label: "2",
+      rows: [0x3c, 0x66, 0x06, 0x0c, 0x18, 0x30, 0x7e, 0x7e],
+    },
+    {
+      key: "digit3",
+      label: "3",
+      rows: [0x3c, 0x66, 0x06, 0x1c, 0x06, 0x06, 0x66, 0x3c],
+    },
+    {
+      key: "digit4",
+      label: "4",
+      rows: [0x0c, 0x1c, 0x3c, 0x6c, 0xcc, 0xfe, 0x0c, 0x0c],
+    },
+    {
+      key: "digit5",
+      label: "5",
+      rows: [0x7e, 0x60, 0x60, 0x7c, 0x06, 0x06, 0x66, 0x3c],
+    },
+    {
+      key: "digit6",
+      label: "6",
+      rows: [0x1c, 0x30, 0x60, 0x7c, 0x66, 0x66, 0x66, 0x3c],
+    },
+    {
+      key: "digit7",
+      label: "7",
+      rows: [0x7e, 0x66, 0x06, 0x0c, 0x18, 0x18, 0x18, 0x18],
+    },
+    {
+      key: "digit8",
+      label: "8",
+      rows: [0x3c, 0x66, 0x66, 0x3c, 0x66, 0x66, 0x66, 0x3c],
+    },
+    {
+      key: "digit9",
+      label: "9",
+      rows: [0x3c, 0x66, 0x66, 0x66, 0x3e, 0x06, 0x0c, 0x38],
+    },
+    {
+      key: "letterA",
+      label: "A",
+      rows: [0x18, 0x24, 0x42, 0x7e, 0x42, 0x42, 0x42, 0x00],
+    },
+    {
+      key: "letterB",
+      label: "B",
+      rows: [0x7c, 0x42, 0x42, 0x7c, 0x42, 0x42, 0x7c, 0x00],
+    },
+    {
+      key: "letterC",
+      label: "C",
+      rows: [0x3c, 0x42, 0x40, 0x40, 0x40, 0x42, 0x3c, 0x00],
+    },
+    {
+      key: "letterD",
+      label: "D",
+      rows: [0x78, 0x44, 0x42, 0x42, 0x42, 0x44, 0x78, 0x00],
+    },
+    {
+      key: "letterE",
+      label: "E",
+      rows: [0x7e, 0x40, 0x40, 0x7c, 0x40, 0x40, 0x7e, 0x00],
+    },
+    {
+      key: "letterF",
+      label: "F",
+      rows: [0x7e, 0x40, 0x40, 0x7c, 0x40, 0x40, 0x40, 0x00],
+    },
+    {
+      key: "letterG",
+      label: "G",
+      rows: [0x3c, 0x42, 0x40, 0x4e, 0x42, 0x42, 0x3c, 0x00],
+    },
+    {
+      key: "letterH",
+      label: "H",
+      rows: [0x42, 0x42, 0x42, 0x7e, 0x42, 0x42, 0x42, 0x00],
+    },
+    {
+      key: "letterI",
+      label: "I",
+      rows: [0x3c, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3c, 0x00],
+    },
+    {
+      key: "letterJ",
+      label: "J",
+      rows: [0x1e, 0x04, 0x04, 0x04, 0x44, 0x44, 0x38, 0x00],
+    },
+    {
+      key: "letterK",
+      label: "K",
+      rows: [0x42, 0x44, 0x48, 0x70, 0x48, 0x44, 0x42, 0x00],
+    },
+    {
+      key: "letterL",
+      label: "L",
+      rows: [0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x7e, 0x00],
+    },
+    {
+      key: "letterM",
+      label: "M",
+      rows: [0x42, 0x66, 0x5a, 0x5a, 0x42, 0x42, 0x42, 0x00],
+    },
+    {
+      key: "letterN",
+      label: "N",
+      rows: [0x42, 0x62, 0x52, 0x4a, 0x46, 0x42, 0x42, 0x00],
+    },
+    {
+      key: "letterO",
+      label: "O",
+      rows: [0x3c, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3c, 0x00],
+    },
+    {
+      key: "letterP",
+      label: "P",
+      rows: [0x7c, 0x42, 0x42, 0x7c, 0x40, 0x40, 0x40, 0x00],
+    },
+    {
+      key: "letterQ",
+      label: "Q",
+      rows: [0x3c, 0x42, 0x42, 0x42, 0x4a, 0x44, 0x3a, 0x00],
+    },
+    {
+      key: "letterR",
+      label: "R",
+      rows: [0x7c, 0x42, 0x42, 0x7c, 0x48, 0x44, 0x42, 0x00],
+    },
+    {
+      key: "letterS",
+      label: "S",
+      rows: [0x3c, 0x42, 0x40, 0x3c, 0x02, 0x42, 0x3c, 0x00],
+    },
+    {
+      key: "letterT",
+      label: "T",
+      rows: [0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00],
+    },
+    {
+      key: "letterU",
+      label: "U",
+      rows: [0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3c, 0x00],
+    },
+    {
+      key: "letterV",
+      label: "V",
+      rows: [0x42, 0x42, 0x42, 0x42, 0x42, 0x24, 0x18, 0x00],
+    },
+    {
+      key: "letterW",
+      label: "W",
+      rows: [0x42, 0x42, 0x42, 0x5a, 0x5a, 0x66, 0x42, 0x00],
+    },
+    {
+      key: "letterX",
+      label: "X",
+      rows: [0x42, 0x42, 0x24, 0x18, 0x24, 0x42, 0x42, 0x00],
+    },
+    {
+      key: "letterY",
+      label: "Y",
+      rows: [0x42, 0x42, 0x24, 0x18, 0x18, 0x18, 0x18, 0x00],
+    },
+    {
+      key: "letterZ",
+      label: "Z",
+      rows: [0x7e, 0x02, 0x04, 0x18, 0x20, 0x40, 0x7e, 0x00],
+    },
+  ];
+  const presetMap = Object.fromEntries(
+    presets.map((preset) => [preset.key, preset.rows]),
+  );
   const toggle = (i) => {
     const g = [...grid];
     g[i] = !g[i];
     setGrid(g);
+  };
+  const sendPattern = async (rows, options = {}) => {
+    const { silent = false } = options;
+    const res = await ws.send("led_matrix", { pattern: rows });
+    if (!silent) setOutput(JSON.stringify(res.data, null, 2));
+    return res;
   };
   const send = async () => {
     const rows = [];
@@ -330,23 +596,80 @@ function LedMatrixPanel({ ws, disabled }) {
       for (let c = 0; c < 8; c++) if (grid[r * 8 + c]) val |= 1 << (7 - c);
       rows.push(val);
     }
-    const res = await ws.send("led_matrix", { pattern: rows });
-    setOutput(JSON.stringify(res.data, null, 2));
+    await sendPattern(rows);
   };
   const clear = () => setGrid(Array(64).fill(false));
-  const presets = {
-    smile: [0x3c, 0x42, 0xa5, 0x81, 0xa5, 0x99, 0x42, 0x3c],
-    heart: [0x00, 0x66, 0xff, 0xff, 0xff, 0x7e, 0x3c, 0x18],
-    arrow: [0x18, 0x3c, 0x7e, 0xff, 0x18, 0x18, 0x18, 0x18],
-  };
-  const applyPreset = (name) => {
-    const pat = presets[name];
+  const applyPreset = (rows) => {
     const g = Array(64).fill(false);
-    pat.forEach((row, r) => {
+    rows.forEach((row, r) => {
       for (let c = 0; c < 8; c++) if (row & (1 << (7 - c))) g[r * 8 + c] = true;
     });
     setGrid(g);
   };
+  const glyphRowsForChar = (char) => {
+    if (char === " ") return Array(8).fill(0);
+    if (/^[0-9]$/.test(char)) return presetMap[`digit${char}`] || Array(8).fill(0);
+    if (/^[A-Z]$/.test(char)) return presetMap[`letter${char}`] || Array(8).fill(0);
+    return Array(8).fill(0);
+  };
+  const rowsToColumns = (rows) =>
+    Array.from({ length: 8 }, (_, col) => {
+      let bits = 0;
+      for (let row = 0; row < 8; row++) {
+        if (rows[row] & (1 << (7 - col))) bits |= 1 << (7 - row);
+      }
+      return bits;
+    });
+  const columnsToRows = (columns) =>
+    Array.from({ length: 8 }, (_, row) => {
+      let bits = 0;
+      for (let col = 0; col < 8; col++) {
+        if (columns[col] & (1 << (7 - row))) bits |= 1 << (7 - col);
+      }
+      return bits;
+    });
+  const buildScrollFrames = (text) => {
+    const message = (text || "").toUpperCase();
+    const columns = Array(8).fill(0);
+    for (const char of message) {
+      columns.push(...rowsToColumns(glyphRowsForChar(char)), 0x00);
+    }
+    columns.push(...Array(8).fill(0));
+    const frames = [];
+    for (let start = 0; start <= columns.length - 8; start++) {
+      frames.push(columnsToRows(columns.slice(start, start + 8)));
+    }
+    return frames;
+  };
+  const stopScroll = () => {
+    scrollStopRef.current = true;
+    setScrolling(false);
+  };
+  const startScroll = async () => {
+    const frames = buildScrollFrames(scrollText);
+    if (!frames.length || scrolling) return;
+    scrollStopRef.current = false;
+    setScrolling(true);
+    setOutput(`Defilement en cours: ${frames.length} trames`);
+    try {
+      for (const frame of frames) {
+        if (scrollStopRef.current) break;
+        applyPreset(frame);
+        await sendPattern(frame, { silent: true });
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.max(60, scrollSpeed)),
+        );
+      }
+      setOutput(scrollStopRef.current ? "Defilement interrompu" : "Defilement termine");
+    } finally {
+      setScrolling(false);
+    }
+  };
+  useEffect(() => () => {
+    scrollStopRef.current = true;
+  }, []);
+  const selectedPreset =
+    presets.find((preset) => preset.key === presetKey) || presets[0];
   return (
     <Card icon="⬜" title="LED Matrix 8x8" badge="74HC595">
       <div className="led-matrix">
@@ -358,24 +681,67 @@ function LedMatrixPanel({ ws, disabled }) {
           />
         ))}
       </div>
+      <div className="field" style={{ marginTop: 8 }}>
+        <label>Motif predefini</label>
+        <select
+          value={presetKey}
+          onChange={(e) => setPresetKey(e.target.value)}
+        >
+          {presets.map((preset) => (
+            <option key={preset.key} value={preset.key}>
+              {preset.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-        <button className="btn sm" onClick={() => applyPreset("smile")}>
-          Smile
+        <button
+          className="btn sm"
+          onClick={() => applyPreset(selectedPreset.rows)}
+          disabled={scrolling}
+        >
+          Charger
         </button>
-        <button className="btn sm" onClick={() => applyPreset("heart")}>
-          Coeur
-        </button>
-        <button className="btn sm" onClick={() => applyPreset("arrow")}>
-          Fleche
-        </button>
-        <button className="btn sm danger" onClick={clear}>
+        <button className="btn sm danger" onClick={clear} disabled={scrolling}>
           Effacer
+        </button>
+      </div>
+      <div className="field-row" style={{ marginTop: 8 }}>
+        <div className="field" style={{ flex: 2 }}>
+          <label>Texte defilant</label>
+          <input
+            value={scrollText}
+            onChange={(e) => setScrollText(e.target.value.toUpperCase())}
+            placeholder="HELLO"
+            maxLength="24"
+            disabled={disabled || scrolling}
+          />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Vitesse (ms)</label>
+          <input
+            type="number"
+            min="60"
+            max="1000"
+            step="20"
+            value={scrollSpeed}
+            onChange={(e) => setScrollSpeed(Number(e.target.value) || 180)}
+            disabled={disabled || scrolling}
+          />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+        <button className="btn sm" onClick={startScroll} disabled={disabled || scrolling}>
+          Defiler
+        </button>
+        <button className="btn sm danger" onClick={stopScroll} disabled={!scrolling}>
+          Stop
         </button>
       </div>
       <button
         className="btn"
         onClick={send}
-        disabled={disabled}
+        disabled={disabled || scrolling}
         style={{ width: "100%", marginTop: 8 }}
       >
         Envoyer

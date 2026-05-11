@@ -317,7 +317,10 @@ async def dispatch(action: str, params: dict) -> dict:
             return {"error": "pattern must be a list of 8 integers (0-255)"}
         safe = [max(0, min(255, int(v))) for v in pattern]
         arg = ",".join(str(v) for v in safe)
-        return await _run_board_script("led_matrix.py", arg)
+        kill_cmd = "for _P in $(ps | grep led_matrix | grep -v grep | awk '{print $1}'); do kill -9 $_P 2>/dev/null; done"
+        cmd = f"{kill_cmd}; sleep 0.1; nohup python3 {config.BOARD_SCRIPTS_DIR}/led_matrix.py {arg} > /dev/null 2>&1 &"
+        await _run_board_command(cmd, timeout=5)
+        return {"status": "ok", "pattern": safe}
 
     # --- I2C ---
     if action == "i2c_scan":
