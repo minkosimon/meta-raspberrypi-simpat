@@ -608,8 +608,10 @@ function LedMatrixPanel({ ws, disabled }) {
   };
   const glyphRowsForChar = (char) => {
     if (char === " ") return Array(8).fill(0);
-    if (/^[0-9]$/.test(char)) return presetMap[`digit${char}`] || Array(8).fill(0);
-    if (/^[A-Z]$/.test(char)) return presetMap[`letter${char}`] || Array(8).fill(0);
+    if (/^[0-9]$/.test(char))
+      return presetMap[`digit${char}`] || Array(8).fill(0);
+    if (/^[A-Z]$/.test(char))
+      return presetMap[`letter${char}`] || Array(8).fill(0);
     return Array(8).fill(0);
   };
   const rowsToColumns = (rows) =>
@@ -660,14 +662,19 @@ function LedMatrixPanel({ ws, disabled }) {
           setTimeout(resolve, Math.max(60, scrollSpeed)),
         );
       }
-      setOutput(scrollStopRef.current ? "Defilement interrompu" : "Defilement termine");
+      setOutput(
+        scrollStopRef.current ? "Defilement interrompu" : "Defilement termine",
+      );
     } finally {
       setScrolling(false);
     }
   };
-  useEffect(() => () => {
-    scrollStopRef.current = true;
-  }, []);
+  useEffect(
+    () => () => {
+      scrollStopRef.current = true;
+    },
+    [],
+  );
   const selectedPreset =
     presets.find((preset) => preset.key === presetKey) || presets[0];
   return (
@@ -731,10 +738,18 @@ function LedMatrixPanel({ ws, disabled }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-        <button className="btn sm" onClick={startScroll} disabled={disabled || scrolling}>
+        <button
+          className="btn sm"
+          onClick={startScroll}
+          disabled={disabled || scrolling}
+        >
           Defiler
         </button>
-        <button className="btn sm danger" onClick={stopScroll} disabled={!scrolling}>
+        <button
+          className="btn sm danger"
+          onClick={stopScroll}
+          disabled={!scrolling}
+        >
           Stop
         </button>
       </div>
@@ -824,9 +839,12 @@ function LedBarPanel({ ws, disabled }) {
     levelRef.current = level;
   }, [level]);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const send = async (nextLevel = level, options = {}) => {
     const { silent = false } = options;
@@ -917,11 +935,26 @@ function LedBarPanel({ ws, disabled }) {
           onChange={(e) => setLevel(+e.target.value)}
         />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
-        <button className="btn" onClick={send} disabled={disabled || oscillating}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+          marginTop: 6,
+        }}
+      >
+        <button
+          className="btn"
+          onClick={send}
+          disabled={disabled || oscillating}
+        >
           Appliquer
         </button>
-        <button className="btn" onClick={startOscillation} disabled={disabled || oscillating}>
+        <button
+          className="btn"
+          onClick={startOscillation}
+          disabled={disabled || oscillating}
+        >
           Osciller
         </button>
       </div>

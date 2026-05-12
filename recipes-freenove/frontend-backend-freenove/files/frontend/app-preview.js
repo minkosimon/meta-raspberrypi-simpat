@@ -729,8 +729,10 @@ function LedMatrixPanel({ ws, disabled }) {
   };
   const glyphRowsForChar = (char) => {
     if (char === " ") return Array(8).fill(0);
-    if (/^[0-9]$/.test(char)) return presetMap[`digit${char}`] || Array(8).fill(0);
-    if (/^[A-Z]$/.test(char)) return presetMap[`letter${char}`] || Array(8).fill(0);
+    if (/^[0-9]$/.test(char))
+      return presetMap[`digit${char}`] || Array(8).fill(0);
+    if (/^[A-Z]$/.test(char))
+      return presetMap[`letter${char}`] || Array(8).fill(0);
     return Array(8).fill(0);
   };
   const rowsToColumns = (rows) =>
@@ -781,14 +783,19 @@ function LedMatrixPanel({ ws, disabled }) {
           setTimeout(resolve, Math.max(60, scrollSpeed)),
         );
       }
-      setOutput(scrollStopRef.current ? "Defilement interrompu" : "Defilement termine");
+      setOutput(
+        scrollStopRef.current ? "Defilement interrompu" : "Defilement termine",
+      );
     } finally {
       setScrolling(false);
     }
   };
-  useEffect(() => () => {
-    scrollStopRef.current = true;
-  }, []);
+  useEffect(
+    () => () => {
+      scrollStopRef.current = true;
+    },
+    [],
+  );
   const selectedPreset =
     presets.find((preset) => preset.key === presetKey) || presets[0];
   return h(
@@ -870,12 +877,20 @@ function LedMatrixPanel({ ws, disabled }) {
       { style: { display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" } },
       h(
         "button",
-        { className: "btn sm", onClick: startScroll, disabled: disabled || scrolling },
+        {
+          className: "btn sm",
+          onClick: startScroll,
+          disabled: disabled || scrolling,
+        },
         "Defiler",
       ),
       h(
         "button",
-        { className: "btn sm danger", onClick: stopScroll, disabled: !scrolling },
+        {
+          className: "btn sm danger",
+          onClick: stopScroll,
+          disabled: !scrolling,
+        },
         "Stop",
       ),
     ),
@@ -981,9 +996,12 @@ function LedBarPanel({ ws, disabled }) {
     levelRef.current = level;
   }, [level]);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const send = async (nextLevel = level, options = {}) => {
     const { silent = false } = options;
@@ -1084,7 +1102,12 @@ function LedBarPanel({ ws, disabled }) {
     h(
       "div",
       {
-        style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 },
+        style: {
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+          marginTop: 6,
+        },
       },
       h(
         "button",
@@ -2969,7 +2992,21 @@ function App() {
   const ws = useWebSocket(wsUrl);
   const [activePanel, setActivePanel] = useState("gpio");
   const [showDebug, setShowDebug] = useState(false);
+  const previousPanelRef = useRef(activePanel);
   const wsOnlyDis = !ws.ready;
+
+  useEffect(() => {
+    const previousPanel = previousPanelRef.current;
+
+    if (ws.ready && previousPanel && previousPanel !== activePanel) {
+      ws.send("panel_change", {
+        previous_panel: previousPanel,
+        panel: activePanel,
+      });
+    }
+
+    previousPanelRef.current = activePanel;
+  }, [activePanel, ws.ready, ws.send]);
 
   /* Map panel id -> component */
   const PANELS = {

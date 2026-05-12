@@ -43,6 +43,7 @@ logger = logging.getLogger("app")
 bridge = SSHBridge()
 
 LOCAL_SSH_HOSTS = {"127.0.0.1", "localhost", "::1"}
+DISPLAY_DAEMON_PATTERNS = ("led_matrix.py", "seven_segment.py")
 
 
 def _should_run_locally() -> bool:
@@ -146,6 +147,25 @@ async def _run_board_script(script_name: str, args: str = "") -> dict:
     return {"error": "not_connected"}
 
 
+def _build_process_kill_command(patterns: tuple[str, ...]) -> str:
+    commands = []
+    for pattern in patterns:
+        commands.append(
+            "for _P in $(ps | grep -F {pattern} | grep -v grep | awk '{{print $1}}'); "
+            "do kill $_P 2>/dev/null || true; done".format(
+                pattern=shlex.quote(pattern)
+            )
+        )
+    return "; ".join(commands) or "true"
+
+
+async def _stop_display_daemons() -> dict:
+    return await _run_board_command(
+        _build_process_kill_command(DISPLAY_DAEMON_PATTERNS),
+        timeout=5,
+    )
+
+
 # ---------------------------------------------------------------------------
 #  WebSocket handler
 # ---------------------------------------------------------------------------
@@ -214,6 +234,17 @@ async def dispatch(action: str, params: dict) -> dict:
 
     if action == "status":
         return {"connected": bridge.connected}
+
+    if action == "panel_change":
+        previous_panel = str(params.get("previous_panel", ""))
+        panel = str(params.get("panel", ""))
+        result = await _stop_display_daemons()
+        return {
+            "previous_panel": previous_panel,
+            "panel": panel,
+            "stopped": list(DISPLAY_DAEMON_PATTERNS),
+            "result": result,
+        }
 
     # --- Freenove driver LEDs (/sys/class/leds/freenove:ledX) ---
     if action == "freenove_led_status":
@@ -317,7 +348,7 @@ async def dispatch(action: str, params: dict) -> dict:
             return {"error": "pattern must be a list of 8 integers (0-255)"}
         safe = [max(0, min(255, int(v))) for v in pattern]
         arg = ",".join(str(v) for v in safe)
-        kill_cmd = "for _P in $(ps | grep led_matrix | grep -v grep | awk '{print $1}'); do kill -9 $_P 2>/dev/null; done"
+        kill_cmd = _build_process_kill_command(DISPLAY_DAEMON_PATTERNS)
         cmd = f"{kill_cmd}; sleep 0.1; nohup python3 {config.BOARD_SCRIPTS_DIR}/led_matrix.py {arg} > /dev/null 2>&1 &"
         await _run_board_command(cmd, timeout=5)
         return {"status": "ok", "pattern": safe}
@@ -329,7 +360,7 @@ async def dispatch(action: str, params: dict) -> dict:
         if not safe:
             safe = "0"
         safe = safe.rjust(4, "0")
-        kill_cmd = "for _P in $(ps | grep seven_segment.py | grep -v grep | awk '{print $1}'); do kill -9 $_P 2>/dev/null; done"
+        kill_cmd = _build_process_kill_command(DISPLAY_DAEMON_PATTERNS)
         cmd = f"{kill_cmd}; sleep 0.1; nohup python3 {config.BOARD_SCRIPTS_DIR}/seven_segment.py {safe} > /dev/null 2>&1 &"
         await _run_board_command(cmd, timeout=5)
         return {"status": "ok", "value": safe}
@@ -339,6 +370,7 @@ async def dispatch(action: str, params: dict) -> dict:
         level = int(params.get("level", 0))
         safe = max(0, min(10, level))
         script = f"{config.BOARD_SCRIPTS_DIR}/led_bar.py"
+        await _stop_display_daemons()
         cmd = f"python3 {script} {safe}"
         return await _run_board_command(cmd, timeout=10)
 
