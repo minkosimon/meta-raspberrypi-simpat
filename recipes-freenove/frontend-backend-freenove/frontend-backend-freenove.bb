@@ -17,6 +17,7 @@ SRC_URI = " \
     file://board-scripts/led_rgb.py \
     file://board-scripts/i2c_scan.py \
     file://board-scripts/adc_read.py \
+    file://board-scripts/mpu6050_read.py \
     file://board-scripts/dht_read.py \
     file://board-scripts/ultrasonic.py \
     file://board-scripts/buzzer.py \

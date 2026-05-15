@@ -1659,14 +1659,123 @@ function UltrasonicPanel({ ws, disabled }) {
 function Mpu6050Panel({ ws, disabled }) {
   const [data, setData] = useState(null);
   const [output, setOutput] = useState("");
+  const [polling, setPolling] = useState(false);
+  const [refreshMs, setRefreshMs] = useState(700);
+  const [streamInfo, setStreamInfo] = useState(null);
+  const timerRef = useRef(null);
+
+  const formatAxis = (value) =>
+    Number.isFinite(value) ? value.toFixed(2) : "--";
+
+  const orientation = data && data.orientation ? data.orientation : null;
+  const pitch = orientation ? orientation.pitch : 0;
+  const roll = orientation ? orientation.roll : 0;
+  const gyroYaw = data && data.gyro ? data.gyro.z : 0;
+  const uiRefreshHz = (1000 / refreshMs).toFixed(refreshMs < 1000 ? 2 : 1);
+  const globePitch = Math.max(-24, Math.min(24, pitch * 0.72));
+  const globeRoll = Math.max(-70, Math.min(70, roll));
+  const globeHeading = Math.max(-160, Math.min(160, gyroYaw * 1.8));
+  const gimbalPitch = Math.max(-46, Math.min(46, pitch * 1.08));
+  const rotorOffset = Math.max(-14, Math.min(14, pitch * 0.34));
+
+  const applyStreamData = (payload, silent = false) => {
+    if (!payload) return;
+    setStreamInfo(payload);
+    if (payload.sample) setData(payload.sample);
+    if (!silent) setOutput(JSON.stringify(payload, null, 2));
+  };
+
+  const fetchStatus = async (silent = false) => {
+    const res = await ws.send("mpu6050_stream_status");
+    if (res.status === "ok") applyStreamData(res.data, silent);
+    else if (!silent) setOutput(JSON.stringify(res, null, 2));
+    return res;
+  };
+
   const read = async () => {
+    if (polling) return await fetchStatus();
+
     const res = await ws.send("mpu6050_read");
     setOutput(JSON.stringify(res.data, null, 2));
     if (res.status === "ok" && res.data.stdout)
       try {
-        setData(JSON.parse(res.data.stdout));
+        const sample = JSON.parse(res.data.stdout);
+        setData(sample);
+        setStreamInfo({
+          streaming: false,
+          interval_ms: refreshMs,
+          actual_hz: 0,
+          sample,
+          sample_age_ms: 0,
+          last_error: "",
+        });
       } catch {}
+    return res;
   };
+
+  const scheduleStatusPoll = (intervalMs) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      fetchStatus(true);
+    }, intervalMs);
+  };
+
+  const stopStream = async (silent = true) => {
+    const res = await ws.send("mpu6050_stream_stop");
+    if (res.status === "ok") applyStreamData(res.data, silent);
+    return res;
+  };
+
+  const stopPolling = async () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setPolling(false);
+    await stopStream(true);
+  };
+
+  const startPolling = async (nextRefreshMs = refreshMs) => {
+    if (disabled || timerRef.current) return;
+    const res = await ws.send("mpu6050_stream_start", {
+      interval_ms: nextRefreshMs,
+    });
+    if (res.status !== "ok") {
+      setOutput(JSON.stringify(res, null, 2));
+      return;
+    }
+    setPolling(true);
+    applyStreamData(res.data, true);
+    scheduleStatusPoll(nextRefreshMs);
+    await fetchStatus(true);
+  };
+
+  const togglePolling = () => {
+    if (polling) void stopPolling();
+    else void startPolling();
+  };
+
+  useEffect(() => {
+    if (!disabled) {
+      void startPolling(refreshMs);
+    } else {
+      void stopPolling();
+    }
+
+    return () => {
+      void stopPolling();
+    };
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!polling || disabled) return;
+
+    scheduleStatusPoll(refreshMs);
+    void ws.send("mpu6050_stream_start", { interval_ms: refreshMs }).then((res) => {
+      if (res.status === "ok") applyStreamData(res.data, true);
+    });
+  }, [refreshMs]);
+
   return h(
     Card,
     { icon: "🎯", title: "MPU6050 Accel/Gyro", badge: "I2C 0x68" },
@@ -1674,6 +1783,113 @@ function Mpu6050Panel({ ws, disabled }) {
       h(
         "div",
         null,
+        h(
+          "div",
+          { className: "imu-space-card" },
+          h(
+            "div",
+            { className: "imu-space-header" },
+            h("span", null, "Globe gyroscopique"),
+            h(
+              "span",
+              { className: "imu-space-badge" },
+              "Pitch ",
+              formatAxis(pitch),
+              "° • Roll ",
+              formatAxis(roll),
+              "°",
+            ),
+          ),
+          h(
+            "div",
+            { className: "imu-space-scene" },
+            h("div", { className: "imu-gyro-shadow" }),
+            h("div", { className: "imu-gyro-stand" }),
+            h(
+              "div",
+              { className: "imu-gyro-frame" },
+              h("div", { className: "imu-gyro-frame-ring" }),
+              h("div", { className: "imu-gyro-crossbar" }),
+              h("div", { className: "imu-gyro-top-pointer" }),
+              h(
+                "div",
+                {
+                  className: "imu-gyro-gimbal",
+                  style: {
+                    transform: "translate(-50%, -50%) rotate(" + globeRoll + "deg)",
+                  },
+                },
+                h("div", { className: "imu-gyro-gimbal-ring" }),
+                h(
+                  "div",
+                  {
+                    className: "imu-gyro-rotor-assembly",
+                    style: {
+                      transform:
+                        "translate(-50%, calc(-50% + " +
+                        rotorOffset +
+                        "px)) rotate(" +
+                        gimbalPitch +
+                        "deg)",
+                    },
+                  },
+                  h(
+                    "div",
+                    {
+                      className: "imu-gyro-spin-axis",
+                      style: {
+                        transform:
+                          "translate(-50%, -50%) rotate(" + globeHeading + "deg)",
+                      },
+                    },
+                  ),
+                  h("div", { className: "imu-gyro-inner-ring" }),
+                  h("div", { className: "imu-gyro-rotor-disc" }),
+                  h("div", { className: "imu-gyro-rotor-hub" }),
+                ),
+              ),
+              h(
+                "div",
+                {
+                  className: "imu-gyro-horizon-line",
+                  style: {
+                    transform:
+                      "translate(-50%, calc(-50% + " +
+                      globePitch +
+                      "px)) rotate(" +
+                      globeRoll +
+                      "deg)",
+                  },
+                },
+              ),
+              h("div", { className: "imu-gyro-wing imu-gyro-wing-left" }),
+              h("div", { className: "imu-gyro-wing imu-gyro-wing-right" }),
+              h("div", { className: "imu-gyro-center" }),
+            ),
+            h(
+              "div",
+              {
+                className: "imu-globe-angle-chip imu-globe-angle-chip-pitch",
+              },
+              "Pitch ",
+              h("strong", null, formatAxis(pitch) + "°"),
+            ),
+            h(
+              "div",
+              {
+                className: "imu-globe-angle-chip imu-globe-angle-chip-roll",
+              },
+              "Roll ",
+              h("strong", null, formatAxis(roll) + "°"),
+            ),
+          ),
+          h(
+            "div",
+            { className: "imu-space-footer" },
+            h("span", null, "Representation de la vision dans l'espace"),
+            h("span", null, "Rotation Z gyro ", formatAxis(gyroYaw), "°/s"),
+          ),
+        ),
         h(
           "div",
           {
@@ -1693,7 +1909,7 @@ function Mpu6050Panel({ ws, disabled }) {
               "div",
               { key: a, className: "axis-item" },
               h("div", { className: "axis-label" }, a.toUpperCase()),
-              h("div", { className: "axis-val" }, data.accel[a]),
+              h("div", { className: "axis-val" }, formatAxis(data.accel[a])),
             ),
           ),
         ),
@@ -1717,26 +1933,127 @@ function Mpu6050Panel({ ws, disabled }) {
               "div",
               { key: a, className: "axis-item" },
               h("div", { className: "axis-label" }, a.toUpperCase()),
-              h("div", { className: "axis-val" }, data.gyro[a]),
+              h("div", { className: "axis-val" }, formatAxis(data.gyro[a])),
+            ),
+          ),
+        ),
+        orientation &&
+          h(
+            "div",
+            { className: "axes-grid", style: { marginTop: 8 } },
+            [
+              ["Pitch", pitch],
+              ["Roll", roll],
+              ["Temp", data.temp],
+            ].map(([label, value]) =>
+              h(
+                "div",
+                { key: label, className: "axis-item" },
+                h("div", { className: "axis-label" }, label),
+                h(
+                  "div",
+                  { className: "axis-val" },
+                  formatAxis(value),
+                  label === "Temp" ? "°C" : "°",
+                ),
+              ),
+            ),
+          ),
+        h(
+          "div",
+          { className: "axes-grid", style: { marginTop: 8 } },
+          [
+            ["UI", uiRefreshHz + " Hz"],
+            [
+              "Backend",
+              streamInfo && streamInfo.actual_hz
+                ? formatAxis(streamInfo.actual_hz) + " Hz"
+                : "--",
+            ],
+            [
+              "Age",
+              streamInfo && streamInfo.sample_age_ms != null
+                ? Math.round(streamInfo.sample_age_ms) + " ms"
+                : "--",
+            ],
+          ].map(([label, value]) =>
+            h(
+              "div",
+              { key: label, className: "axis-item" },
+              h("div", { className: "axis-label" }, label),
+              h("div", { className: "axis-val" }, value),
             ),
           ),
         ),
         h(
+          "label",
+          {
+            style: {
+              display: "block",
+              marginTop: 10,
+              fontSize: ".75rem",
+              color: "var(--text-dim)",
+            },
+          },
+          "Frequence de rafraichissement frontend",
+          h(
+            "select",
+            {
+              className: "input",
+              value: String(refreshMs),
+              onChange: (event) => setRefreshMs(Number(event.target.value)),
+              disabled,
+              style: { width: "100%", marginTop: 6 },
+            },
+            [150, 300, 500, 700, 1000, 1500, 2000].map((value) =>
+              h(
+                "option",
+                { key: value, value: String(value) },
+                value,
+                " ms (",
+                (1000 / value).toFixed(value < 1000 ? 2 : 1),
+                " Hz)",
+              ),
+            ),
+          ),
+        ),
+        streamInfo &&
+          streamInfo.last_error &&
+          h(
+            "div",
+            { className: "output", style: { marginTop: 8 } },
+            streamInfo.last_error,
+          ),
+        h(
           "div",
           { style: { textAlign: "center", marginTop: 6, fontSize: ".85rem" } },
           "Temp: ",
-          h("strong", null, data.temp + "\u00B0C"),
+          h("strong", null, formatAxis(data.temp) + "\u00B0C"),
         ),
       ),
     h(
-      "button",
-      {
-        className: "btn",
-        onClick: read,
-        disabled,
-        style: { width: "100%", marginTop: 8 },
-      },
-      "Lire",
+      "div",
+      { style: { display: "flex", gap: 8, marginTop: 8 } },
+      h(
+        "button",
+        {
+          className: "btn",
+          onClick: read,
+          disabled,
+          style: { flex: 1 },
+        },
+        "Lire",
+      ),
+      h(
+        "button",
+        {
+          className: "btn " + (polling ? "danger" : "success"),
+          onClick: togglePolling,
+          disabled,
+          style: { flex: 1 },
+        },
+        polling ? "Stop Auto" : "Auto",
+      ),
     ),
     output && h("div", { className: "output" }, output),
   );

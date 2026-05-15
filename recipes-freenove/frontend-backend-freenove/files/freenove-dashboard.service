@@ -1,7 +1,5 @@
 [Unit]
 Description=Freenove FNK0054 Test Dashboard
-After=network-online.target
-Wants=network-online.target
 
 [Service]
 Type=simple

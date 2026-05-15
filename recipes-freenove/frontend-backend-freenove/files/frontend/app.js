@@ -1416,18 +1416,187 @@ function UltrasonicPanel({ ws, disabled }) {
 function Mpu6050Panel({ ws, disabled }) {
   const [data, setData] = useState(null);
   const [output, setOutput] = useState("");
+  const [polling, setPolling] = useState(false);
+  const [refreshMs, setRefreshMs] = useState(700);
+  const [streamInfo, setStreamInfo] = useState(null);
+  const timerRef = useRef(null);
+
+  const formatAxis = (value) =>
+    Number.isFinite(value) ? value.toFixed(2) : "--";
+
+  const orientation = data && data.orientation ? data.orientation : null;
+  const pitch = orientation ? orientation.pitch : 0;
+  const roll = orientation ? orientation.roll : 0;
+  const gyroYaw = data && data.gyro ? data.gyro.z : 0;
+  const uiRefreshHz = (1000 / refreshMs).toFixed(refreshMs < 1000 ? 2 : 1);
+  const globePitch = Math.max(-24, Math.min(24, pitch * 0.72));
+  const globeRoll = Math.max(-70, Math.min(70, roll));
+  const globeHeading = Math.max(-160, Math.min(160, gyroYaw * 1.8));
+  const gimbalPitch = Math.max(-46, Math.min(46, pitch * 1.08));
+  const rotorOffset = Math.max(-14, Math.min(14, pitch * 0.34));
+
+  const applyStreamData = (payload, silent = false) => {
+    if (!payload) return;
+    setStreamInfo(payload);
+    if (payload.sample) setData(payload.sample);
+    if (!silent) setOutput(JSON.stringify(payload, null, 2));
+  };
+
+  const fetchStatus = async (silent = false) => {
+    const res = await ws.send("mpu6050_stream_status");
+    if (res.status === "ok") applyStreamData(res.data, silent);
+    else if (!silent) setOutput(JSON.stringify(res, null, 2));
+    return res;
+  };
+
   const read = async () => {
+    if (polling) return await fetchStatus();
+
     const res = await ws.send("mpu6050_read");
     setOutput(JSON.stringify(res.data, null, 2));
     if (res.status === "ok" && res.data.stdout)
       try {
-        setData(JSON.parse(res.data.stdout));
+        const sample = JSON.parse(res.data.stdout);
+        setData(sample);
+        setStreamInfo({
+          streaming: false,
+          interval_ms: refreshMs,
+          actual_hz: 0,
+          sample,
+          sample_age_ms: 0,
+          last_error: "",
+        });
       } catch {}
+    return res;
   };
+
+  const scheduleStatusPoll = (intervalMs) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      fetchStatus(true);
+    }, intervalMs);
+  };
+
+  const stopStream = async (silent = true) => {
+    const res = await ws.send("mpu6050_stream_stop");
+    if (res.status === "ok") applyStreamData(res.data, silent);
+    return res;
+  };
+
+  const stopPolling = async () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setPolling(false);
+    await stopStream(true);
+  };
+
+  const startPolling = async (nextRefreshMs = refreshMs) => {
+    if (disabled || timerRef.current) return;
+    const res = await ws.send("mpu6050_stream_start", {
+      interval_ms: nextRefreshMs,
+    });
+    if (res.status !== "ok") {
+      setOutput(JSON.stringify(res, null, 2));
+      return;
+    }
+    setPolling(true);
+    applyStreamData(res.data, true);
+    scheduleStatusPoll(nextRefreshMs);
+    await fetchStatus(true);
+  };
+
+  const togglePolling = () => {
+    if (polling) void stopPolling();
+    else void startPolling();
+  };
+
+  useEffect(() => {
+    if (!disabled) {
+      void startPolling(refreshMs);
+    } else {
+      void stopPolling();
+    }
+
+    return () => {
+      void stopPolling();
+    };
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!polling || disabled) return;
+
+    scheduleStatusPoll(refreshMs);
+    void ws.send("mpu6050_stream_start", { interval_ms: refreshMs }).then((res) => {
+      if (res.status === "ok") applyStreamData(res.data, true);
+    });
+  }, [refreshMs]);
+
   return (
     <Card icon="🎯" title="MPU6050 Accel/Gyro" badge="I2C 0x68">
       {data && (
         <div>
+          <div className="imu-space-card">
+            <div className="imu-space-header">
+              <span>Globe gyroscopique</span>
+              <span className="imu-space-badge">
+                Pitch {formatAxis(pitch)}° • Roll {formatAxis(roll)}°
+              </span>
+            </div>
+            <div className="imu-space-scene">
+              <div className="imu-gyro-shadow" />
+              <div className="imu-gyro-stand" />
+              <div className="imu-gyro-frame">
+                <div className="imu-gyro-frame-ring" />
+                <div className="imu-gyro-crossbar" />
+                <div className="imu-gyro-top-pointer" />
+                <div
+                  className="imu-gyro-gimbal"
+                  style={{
+                    transform: `translate(-50%, -50%) rotate(${globeRoll}deg)`,
+                  }}
+                >
+                  <div className="imu-gyro-gimbal-ring" />
+                  <div
+                    className="imu-gyro-rotor-assembly"
+                    style={{
+                      transform: `translate(-50%, calc(-50% + ${rotorOffset}px)) rotate(${gimbalPitch}deg)`,
+                    }}
+                  >
+                    <div
+                      className="imu-gyro-spin-axis"
+                      style={{
+                        transform: `translate(-50%, -50%) rotate(${globeHeading}deg)`,
+                      }}
+                    />
+                    <div className="imu-gyro-inner-ring" />
+                    <div className="imu-gyro-rotor-disc" />
+                    <div className="imu-gyro-rotor-hub" />
+                  </div>
+                </div>
+                <div
+                  className="imu-gyro-horizon-line"
+                  style={{
+                    transform: `translate(-50%, calc(-50% + ${globePitch}px)) rotate(${globeRoll}deg)`,
+                  }}
+                />
+                <div className="imu-gyro-wing imu-gyro-wing-left" />
+                <div className="imu-gyro-wing imu-gyro-wing-right" />
+                <div className="imu-gyro-center" />
+              </div>
+              <div className="imu-globe-angle-chip imu-globe-angle-chip-pitch">
+                Pitch <strong>{formatAxis(pitch)}°</strong>
+              </div>
+              <div className="imu-globe-angle-chip imu-globe-angle-chip-roll">
+                Roll <strong>{formatAxis(roll)}°</strong>
+              </div>
+            </div>
+            <div className="imu-space-footer">
+              <span>Representation de la vision dans l'espace</span>
+              <span>Rotation Z gyro {formatAxis(gyroYaw)}°/s</span>
+            </div>
+          </div>
           <div
             style={{
               fontSize: ".75rem",
@@ -1441,7 +1610,7 @@ function Mpu6050Panel({ ws, disabled }) {
             {["x", "y", "z"].map((a) => (
               <div key={a} className="axis-item">
                 <div className="axis-label">{a.toUpperCase()}</div>
-                <div className="axis-val">{data.accel[a]}</div>
+                <div className="axis-val">{formatAxis(data.accel[a])}</div>
               </div>
             ))}
           </div>
@@ -1459,25 +1628,102 @@ function Mpu6050Panel({ ws, disabled }) {
             {["x", "y", "z"].map((a) => (
               <div key={a} className="axis-item">
                 <div className="axis-label">{a.toUpperCase()}</div>
-                <div className="axis-val">{data.gyro[a]}</div>
+                <div className="axis-val">{formatAxis(data.gyro[a])}</div>
               </div>
             ))}
           </div>
+          {orientation && (
+            <div className="axes-grid" style={{ marginTop: 8 }}>
+              {[
+                ["Pitch", pitch],
+                ["Roll", roll],
+                ["Temp", data.temp],
+              ].map(([label, value]) => (
+                <div key={label} className="axis-item">
+                  <div className="axis-label">{label}</div>
+                  <div className="axis-val">
+                    {formatAxis(value)}
+                    {label === "Temp" ? "°C" : "°"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="axes-grid" style={{ marginTop: 8 }}>
+            {[
+              ["UI", `${uiRefreshHz} Hz`],
+              [
+                "Backend",
+                streamInfo && streamInfo.actual_hz
+                  ? `${formatAxis(streamInfo.actual_hz)} Hz`
+                  : "--",
+              ],
+              [
+                "Age",
+                streamInfo && streamInfo.sample_age_ms != null
+                  ? `${Math.round(streamInfo.sample_age_ms)} ms`
+                  : "--",
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="axis-item">
+                <div className="axis-label">{label}</div>
+                <div className="axis-val">{value}</div>
+              </div>
+            ))}
+          </div>
+          <label
+            style={{
+              display: "block",
+              marginTop: 10,
+              fontSize: ".75rem",
+              color: "var(--text-dim)",
+            }}
+          >
+            Frequence de rafraichissement frontend
+            <select
+              className="input"
+              value={String(refreshMs)}
+              onChange={(event) => setRefreshMs(Number(event.target.value))}
+              disabled={disabled}
+              style={{ width: "100%", marginTop: 6 }}
+            >
+              {[150, 300, 500, 700, 1000, 1500, 2000].map((value) => (
+                <option key={value} value={String(value)}>
+                  {value} ms ({(1000 / value).toFixed(value < 1000 ? 2 : 1)} Hz)
+                </option>
+              ))}
+            </select>
+          </label>
+          {streamInfo && streamInfo.last_error && (
+            <div className="output" style={{ marginTop: 8 }}>
+              {streamInfo.last_error}
+            </div>
+          )}
           <div
             style={{ textAlign: "center", marginTop: 6, fontSize: ".85rem" }}
           >
-            Temp: <strong>{data.temp}°C</strong>
+            Temp: <strong>{formatAxis(data.temp)}°C</strong>
           </div>
         </div>
       )}
-      <button
-        className="btn"
-        onClick={read}
-        disabled={disabled}
-        style={{ width: "100%", marginTop: 8 }}
-      >
-        Lire
-      </button>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button
+          className="btn"
+          onClick={read}
+          disabled={disabled}
+          style={{ flex: 1 }}
+        >
+          Lire
+        </button>
+        <button
+          className={"btn " + (polling ? "danger" : "success")}
+          onClick={togglePolling}
+          disabled={disabled}
+          style={{ flex: 1 }}
+        >
+          {polling ? "Stop Auto" : "Auto"}
+        </button>
+      </div>
       {output && <div className="output">{output}</div>}
     </Card>
   );
@@ -2643,7 +2889,21 @@ function App() {
   const ws = useWebSocket(wsUrl);
   const [activePanel, setActivePanel] = useState("gpio");
   const [showDebug, setShowDebug] = useState(false);
+  const previousPanelRef = useRef(activePanel);
   const wsOnlyDis = !ws.ready;
+
+  useEffect(() => {
+    const previousPanel = previousPanelRef.current;
+
+    if (ws.ready && previousPanel && previousPanel !== activePanel) {
+      ws.send("panel_change", {
+        previous_panel: previousPanel,
+        panel: activePanel,
+      });
+    }
+
+    previousPanelRef.current = activePanel;
+  }, [activePanel, ws.ready]);
 
   return (
     <div className="app-wrapper">

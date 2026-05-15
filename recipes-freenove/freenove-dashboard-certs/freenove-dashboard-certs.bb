@@ -1,36 +1,39 @@
-SUMMARY = "Freenove dashboard TLS certificate bootstrap"
-DESCRIPTION = "Generates a self-signed TLS certificate for the Freenove dashboard on first boot and writes the dashboard TLS environment file."
+SUMMARY = "Freenove dashboard TLS certificate bundle"
+DESCRIPTION = "Generates a self-signed TLS certificate at build time for the Freenove dashboard and installs the dashboard TLS environment file."
 LICENSE = "CLOSED"
 
-SRC_URI = " \
-    file://freenove-dashboard-certgen \
-    file://freenove-dashboard-certgen.service \
-"
+DEPENDS += "openssl-native"
 
-inherit systemd
-
-RDEPENDS:${PN} = " \
-    bash \
-    openssl \
-"
+FNK_TLS_COMMON_NAME ?= "raspberrypi5"
+FNK_TLS_SUBJECT_ALT_NAME ?= "DNS:localhost,IP:127.0.0.1,DNS:${FNK_TLS_COMMON_NAME}"
+FNK_TLS_ALLOWED_ORIGINS ?= "https://localhost:8080,https://127.0.0.1:8080,https://${FNK_TLS_COMMON_NAME}:8080"
 
 do_install() {
-    install -d ${D}${sbindir}
-    install -m 0755 ${WORKDIR}/freenove-dashboard-certgen ${D}${sbindir}/freenove-dashboard-certgen
-
-    install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/freenove-dashboard-certgen.service ${D}${systemd_system_unitdir}/
-
     install -d ${D}${sysconfdir}/default
     install -d ${D}${sysconfdir}/ssl/freenove
+
+    chmod 700 ${D}${sysconfdir}/ssl/freenove
+
+    ${STAGING_BINDIR_NATIVE}/openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+        -keyout ${D}${sysconfdir}/ssl/freenove/freenove-dashboard.key \
+        -out ${D}${sysconfdir}/ssl/freenove/freenove-dashboard.crt \
+        -subj "/CN=${FNK_TLS_COMMON_NAME}" \
+        -addext "subjectAltName=${FNK_TLS_SUBJECT_ALT_NAME}"
+
+    chmod 600 ${D}${sysconfdir}/ssl/freenove/freenove-dashboard.key
+    chmod 644 ${D}${sysconfdir}/ssl/freenove/freenove-dashboard.crt
+
+    cat > ${D}${sysconfdir}/default/freenove-dashboard-tls <<EOF
+FNK_WS_TLS=1
+FNK_WS_TLS_CERT=/etc/ssl/freenove/freenove-dashboard.crt
+FNK_WS_TLS_KEY=/etc/ssl/freenove/freenove-dashboard.key
+FNK_WS_ALLOWED_ORIGINS=${FNK_TLS_ALLOWED_ORIGINS}
+EOF
+
+    chmod 600 ${D}${sysconfdir}/default/freenove-dashboard-tls
 }
 
-SYSTEMD_SERVICE:${PN} = "freenove-dashboard-certgen.service"
-SYSTEMD_AUTO_ENABLE = "enable"
-
 FILES:${PN} += " \
-    ${sbindir}/freenove-dashboard-certgen \
-    ${systemd_system_unitdir}/freenove-dashboard-certgen.service \
-    ${sysconfdir}/default \
+    ${sysconfdir}/default/freenove-dashboard-tls \
     ${sysconfdir}/ssl/freenove \
 "

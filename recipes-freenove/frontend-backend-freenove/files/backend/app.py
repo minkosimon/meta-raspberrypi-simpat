@@ -13,6 +13,7 @@ import os
 import shlex
 import ssl
 import sys
+import time
 from urllib.parse import urlsplit
 
 
@@ -44,6 +45,23 @@ bridge = SSHBridge()
 
 LOCAL_SSH_HOSTS = {"127.0.0.1", "localhost", "::1"}
 DISPLAY_DAEMON_PATTERNS = ("led_matrix.py", "seven_segment.py")
+MPU6050_STREAM_DEFAULT_INTERVAL_MS = 700
+MPU6050_STREAM_MIN_INTERVAL_MS = 150
+MPU6050_STREAM_MAX_INTERVAL_MS = 5000
+
+
+mpu6050_stream_state = {
+    "task": None,
+    "streaming": False,
+    "interval_ms": MPU6050_STREAM_DEFAULT_INTERVAL_MS,
+    "bus": config.I2C_BUS,
+    "addr": "0x68",
+    "sample": None,
+    "last_error": "",
+    "updated_at": 0.0,
+    "sample_monotonic": 0.0,
+    "actual_hz": 0.0,
+}
 
 
 def _should_run_locally() -> bool:
@@ -166,6 +184,108 @@ async def _stop_display_daemons() -> dict:
     )
 
 
+def _normalize_mpu6050_interval(interval_ms: object) -> int:
+    value = int(interval_ms)
+    return max(MPU6050_STREAM_MIN_INTERVAL_MS, min(MPU6050_STREAM_MAX_INTERVAL_MS, value))
+
+
+def _parse_board_json(result: dict) -> dict | None:
+    stdout = result.get("stdout", "") if isinstance(result, dict) else ""
+    if not stdout:
+        return None
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _build_mpu6050_status() -> dict:
+    sample_age_ms = None
+    if mpu6050_stream_state["sample_monotonic"]:
+        sample_age_ms = round(
+            (time.monotonic() - mpu6050_stream_state["sample_monotonic"]) * 1000,
+            1,
+        )
+
+    return {
+        "streaming": bool(mpu6050_stream_state["streaming"]),
+        "interval_ms": int(mpu6050_stream_state["interval_ms"]),
+        "actual_hz": round(float(mpu6050_stream_state["actual_hz"]), 2),
+        "bus": int(mpu6050_stream_state["bus"]),
+        "addr": str(mpu6050_stream_state["addr"]),
+        "sample": mpu6050_stream_state["sample"],
+        "last_error": str(mpu6050_stream_state["last_error"]),
+        "updated_at": mpu6050_stream_state["updated_at"] or None,
+        "sample_age_ms": sample_age_ms,
+    }
+
+
+async def _mpu6050_stream_loop() -> None:
+    previous_sample_at = None
+    try:
+        while mpu6050_stream_state["streaming"]:
+            loop_started = time.monotonic()
+            result = await _run_board_script(
+                "mpu6050_read.py",
+                f"{mpu6050_stream_state['bus']} {mpu6050_stream_state['addr']}",
+            )
+            sample = _parse_board_json(result)
+            finished_at = time.monotonic()
+
+            if sample and "error" not in sample:
+                mpu6050_stream_state["sample"] = sample
+                mpu6050_stream_state["last_error"] = ""
+                mpu6050_stream_state["updated_at"] = round(time.time(), 3)
+                mpu6050_stream_state["sample_monotonic"] = finished_at
+                if previous_sample_at is not None and finished_at > previous_sample_at:
+                    mpu6050_stream_state["actual_hz"] = 1.0 / (finished_at - previous_sample_at)
+                previous_sample_at = finished_at
+            elif sample and sample.get("error"):
+                mpu6050_stream_state["last_error"] = str(sample["error"])
+            elif result.get("error"):
+                mpu6050_stream_state["last_error"] = str(result["error"])
+            elif result.get("stderr"):
+                mpu6050_stream_state["last_error"] = str(result["stderr"]).strip()
+
+            elapsed_ms = (time.monotonic() - loop_started) * 1000
+            sleep_ms = max(0.0, mpu6050_stream_state["interval_ms"] - elapsed_ms)
+            await asyncio.sleep(sleep_ms / 1000)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        mpu6050_stream_state["task"] = None
+
+
+async def _start_mpu6050_stream(params: dict) -> dict:
+    interval_ms = _normalize_mpu6050_interval(
+        params.get("interval_ms", mpu6050_stream_state["interval_ms"])
+    )
+    bus = int(params.get("bus", config.I2C_BUS))
+    addr = str(params.get("addr", "0x68"))
+
+    mpu6050_stream_state["interval_ms"] = interval_ms
+    mpu6050_stream_state["bus"] = bus
+    mpu6050_stream_state["addr"] = addr
+    mpu6050_stream_state["streaming"] = True
+
+    if mpu6050_stream_state["task"] is None or mpu6050_stream_state["task"].done():
+        mpu6050_stream_state["task"] = asyncio.create_task(_mpu6050_stream_loop())
+
+    return _build_mpu6050_status()
+
+
+async def _stop_mpu6050_stream() -> dict:
+    mpu6050_stream_state["streaming"] = False
+    task = mpu6050_stream_state.get("task")
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    return _build_mpu6050_status()
+
+
 # ---------------------------------------------------------------------------
 #  WebSocket handler
 # ---------------------------------------------------------------------------
@@ -230,6 +350,7 @@ async def dispatch(action: str, params: dict) -> dict:
         )
 
     if action == "disconnect":
+        await _stop_mpu6050_stream()
         return await bridge.disconnect()
 
     if action == "status":
@@ -239,6 +360,8 @@ async def dispatch(action: str, params: dict) -> dict:
         previous_panel = str(params.get("previous_panel", ""))
         panel = str(params.get("panel", ""))
         result = await _stop_display_daemons()
+        if previous_panel == "mpu6050" and panel != "mpu6050":
+            await _stop_mpu6050_stream()
         return {
             "previous_panel": previous_panel,
             "panel": panel,
@@ -401,6 +524,21 @@ async def dispatch(action: str, params: dict) -> dict:
         trig = int(params.get("trig_pin", 23))
         echo = int(params.get("echo_pin", 24))
         return await _run_board_script("ultrasonic.py", f"{trig} {echo}")
+
+    # --- MPU6050 ---
+    if action == "mpu6050_read":
+        bus = int(params.get("bus", config.I2C_BUS))
+        addr = params.get("addr", "0x68")
+        return await _run_board_script("mpu6050_read.py", f"{bus} {addr}")
+
+    if action == "mpu6050_stream_start":
+        return await _start_mpu6050_stream(params)
+
+    if action == "mpu6050_stream_status":
+        return _build_mpu6050_status()
+
+    if action == "mpu6050_stream_stop":
+        return await _stop_mpu6050_stream()
 
     # --- Buzzer ---
     if action == "buzzer":

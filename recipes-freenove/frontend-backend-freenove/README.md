@@ -40,20 +40,20 @@ Dashboard web pour tester les composants du kit **Freenove FNK0054** sur Raspber
 
 ## Composants testables
 
-| Module            | Script board-side       | Matériel                        |
-|-------------------|-------------------------|---------------------------------|
+| Module               | Script board-side    | Matériel                       |
+| -------------------- | -------------------- | ------------------------------ |
 | GPIO / Freenove LEDs | `manage_GPIO_led.py` | LEDs, boutons (BCM 2-27)       |
-| PWM               | `pwm_control.py`        | LED dimming (GPIO 12,13,18,19) |
-| Servo moteur      | `servo_control.py`      | SG90 (0-180°)                  |
-| LED RGB           | `led_rgb.py`            | LED RGB anode commune           |
-| LED Matrix 8x8    | `led_matrix.py`         | Matrice 74HC595                 |
-| I2C Scanner       | `i2c_scan.py`           | Bus I2C (détection périph.)    |
-| ADC               | `adc_read.py`           | ADS7830 8-ch (potentiomètre)  |
-| DHT11             | `dht_read.py`           | Température + humidité         |
-| Ultrason          | `ultrasonic.py`         | HC-SR04 (distance cm)          |
-| Buzzer            | `buzzer.py`             | Buzzer actif/passif             |
-| Infos système     | `system_info.py`        | CPU temp, RAM, uptime, disque  |
-| Terminal SSH      | *(commande libre)*      | Shell distant                   |
+| PWM                  | `pwm_control.py`     | LED dimming (GPIO 12,13,18,19) |
+| Servo moteur         | `servo_control.py`   | SG90 (0-180°)                  |
+| LED RGB              | `led_rgb.py`         | LED RGB anode commune          |
+| LED Matrix 8x8       | `led_matrix.py`      | Matrice 74HC595                |
+| I2C Scanner          | `i2c_scan.py`        | Bus I2C (détection périph.)    |
+| ADC                  | `adc_read.py`        | ADS7830 8-ch (potentiomètre)   |
+| DHT11                | `dht_read.py`        | Température + humidité         |
+| Ultrason             | `ultrasonic.py`      | HC-SR04 (distance cm)          |
+| Buzzer               | `buzzer.py`          | Buzzer actif/passif            |
+| Infos système        | `system_info.py`     | CPU temp, RAM, uptime, disque  |
+| Terminal SSH         | _(commande libre)_   | Shell distant                  |
 
 ## Structure du projet
 
@@ -180,7 +180,7 @@ Apres ca, `https://localhost:8080` ne devrait plus afficher d'avertissement de c
 ### Integration dans l'image Yocto
 
 Le dashboard principal installe maintenant un fichier d'environnement dans `/etc/default/freenove-dashboard`.
-La recette TLS se charge de generer le certificat sur la cible et d'ecrire `/etc/default/freenove-dashboard-tls`.
+La recette TLS genere le certificat pendant la construction Yocto et installe `/etc/default/freenove-dashboard-tls` dans l'image.
 
 Ajout dans `local.conf`:
 
@@ -188,12 +188,12 @@ Ajout dans `local.conf`:
 IMAGE_INSTALL:append = " frontend-backend-freenove freenove-dashboard-certs"
 ```
 
-Au premier boot, le service `freenove-dashboard-certgen.service`:
+Pendant le build Yocto, la recette TLS:
 
-- cree `/etc/ssl/freenove/freenove-dashboard.crt`
-- cree `/etc/ssl/freenove/freenove-dashboard.key`
+- genere `/etc/ssl/freenove/freenove-dashboard.crt`
+- genere `/etc/ssl/freenove/freenove-dashboard.key`
 - active `FNK_WS_TLS=1`
-- ecrit les origines autorisees dans `/etc/default/freenove-dashboard-tls`
+- installe les origines autorisees dans `/etc/default/freenove-dashboard-tls`
 
 ### Recette Yocto de gestion des certificats
 
@@ -203,10 +203,11 @@ La recette ajoutee est:
 
 Elle installe:
 
-- un script `freenove-dashboard-certgen`
-- un service systemd `freenove-dashboard-certgen.service`
+- un certificat auto-signe genere au build
+- une cle privee associee
+- le fichier d'environnement `/etc/default/freenove-dashboard-tls`
 
-Le certificat n'est pas embarque dans le depot ni dans la recette. Il est genere sur la cible au premier boot, ce qui evite de stocker une cle privee dans la couche Yocto.
+Le certificat n'est pas stocke dans le depot. Il est genere pendant le build Yocto, ce qui supprime le cout de generation au boot sur la cible.
 
 ### Mode Yocto (sur la carte)
 
@@ -254,31 +255,31 @@ Messages JSON :
 
 ### Actions disponibles
 
-| Action            | Params                                        |
-|-------------------|-----------------------------------------------|
-| `connect`         | `host`, `user`, `password`                    |
-| `disconnect`      | —                                             |
-| `status`          | —                                             |
-| `freenove_led_status` | `led`                                      |
-| `freenove_led_set` | `led`, `value` (0/1)                         |
-| `freenove_led_trigger` | `led`, `trigger` (`none`/`timer`)        |
-| `gpio_setup`      | `pin`, `direction` (in/out)                   |
-| `gpio_write`      | `pin`, `value` (0/1)                          |
-| `gpio_read`       | `pin`                                         |
-| `gpio_read_many`  | `pins` (liste BCM)                            |
-| `pwm_start`       | `pin`, `frequency`, `duty`                    |
-| `pwm_set`         | `pin`, `duty`                                 |
-| `pwm_stop`        | `pin`                                         |
-| `servo_set`       | `pin`, `angle` (0-180)                        |
-| `led_rgb`         | `r_pin`, `g_pin`, `b_pin`, `r`, `g`, `b`     |
-| `led_matrix`      | `pattern` (liste de 8 valeurs 0-255)          |
-| `i2c_scan`        | `bus`                                         |
-| `adc_read`        | `channel` (0-7)                               |
-| `dht_read`        | `pin`                                         |
-| `ultrasonic_read` | `trig_pin`, `echo_pin`                        |
-| `buzzer`          | `pin`, `state` (on/off/tone), `frequency`, `duration` |
-| `system_info`     | —                                             |
-| `run_command`     | `command` (necessite connexion SSH active)    |
+| Action                 | Params                                                |
+| ---------------------- | ----------------------------------------------------- |
+| `connect`              | `host`, `user`, `password`                            |
+| `disconnect`           | —                                                     |
+| `status`               | —                                                     |
+| `freenove_led_status`  | `led`                                                 |
+| `freenove_led_set`     | `led`, `value` (0/1)                                  |
+| `freenove_led_trigger` | `led`, `trigger` (`none`/`timer`)                     |
+| `gpio_setup`           | `pin`, `direction` (in/out)                           |
+| `gpio_write`           | `pin`, `value` (0/1)                                  |
+| `gpio_read`            | `pin`                                                 |
+| `gpio_read_many`       | `pins` (liste BCM)                                    |
+| `pwm_start`            | `pin`, `frequency`, `duty`                            |
+| `pwm_set`              | `pin`, `duty`                                         |
+| `pwm_stop`             | `pin`                                                 |
+| `servo_set`            | `pin`, `angle` (0-180)                                |
+| `led_rgb`              | `r_pin`, `g_pin`, `b_pin`, `r`, `g`, `b`              |
+| `led_matrix`           | `pattern` (liste de 8 valeurs 0-255)                  |
+| `i2c_scan`             | `bus`                                                 |
+| `adc_read`             | `channel` (0-7)                                       |
+| `dht_read`             | `pin`                                                 |
+| `ultrasonic_read`      | `trig_pin`, `echo_pin`                                |
+| `buzzer`               | `pin`, `state` (on/off/tone), `frequency`, `duration` |
+| `system_info`          | —                                                     |
+| `run_command`          | `command` (necessite connexion SSH active)            |
 
 ## Circuits de référence (FNK0054)
 
