@@ -40,5 +40,6 @@ AVAILABLE_GPIO_PINS = [
 # PWM-capable pins
 PWM_PINS = [12, 13, 18, 19]
 
-# I2C bus number (RPi5/Yocto: Synopsys DesignWare on i2c-1 = GPIO2/GPIO3)
-I2C_BUS = 1
+# I2C bus number for the user-facing I2C controller on this image.
+# Allow override from the environment when a different device mapping is used.
+I2C_BUS = int(os.environ.get("FNK_I2C_BUS", "1"))

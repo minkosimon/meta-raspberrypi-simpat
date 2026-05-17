@@ -9,17 +9,16 @@ Defaults:
     addr = 0x68
 
 Output: JSON
+
+Uses /dev/i2c-N directly via fcntl.ioctl to avoid requiring smbus.
 """
 
+import fcntl
 import json
 import math
+import os
 import sys
 import time
-
-try:
-    import smbus2 as smbus
-except ImportError:
-    import smbus
 
 PWR_MGMT_1 = 0x6B
 SMPLRT_DIV = 0x19
@@ -32,6 +31,7 @@ GYRO_XOUT_H = 0x43
 
 ACCEL_SCALE = 16384.0
 GYRO_SCALE = 65.5
+I2C_SLAVE = 0x0703
 
 
 def _signed_word(high: int, low: int) -> int:
@@ -45,20 +45,42 @@ def _round_map(values: dict[str, float], digits: int = 3) -> dict[str, float]:
     return {axis: round(value, digits) for axis, value in values.items()}
 
 
+def _open_i2c_device(bus_number: int, address: int) -> int:
+    dev = f"/dev/i2c-{bus_number}"
+    fd = os.open(dev, os.O_RDWR)
+    fcntl.ioctl(fd, I2C_SLAVE, address)
+    return fd
+
+
+def _write_register(fd: int, register: int, value: int) -> None:
+    os.write(fd, bytes((register & 0xFF, value & 0xFF)))
+
+
+def _read_block(fd: int, register: int, length: int) -> bytes:
+    os.write(fd, bytes((register & 0xFF,)))
+    data = os.read(fd, length)
+    if len(data) != length:
+        raise RuntimeError(
+            f"Short read on register 0x{register:02x}: expected {length} bytes, got {len(data)}"
+        )
+    return data
+
+
 def read_sensor(bus_number: int = 1, address: int = 0x68) -> None:
-    bus = smbus.SMBus(bus_number)
+    fd = None
 
     try:
-        bus.write_byte_data(address, PWR_MGMT_1, 0x00)
-        bus.write_byte_data(address, SMPLRT_DIV, 0x00)
-        bus.write_byte_data(address, CONFIG, 0x00)
-        bus.write_byte_data(address, GYRO_CONFIG, 0x08)
-        bus.write_byte_data(address, ACCEL_CONFIG, 0x00)
+        fd = _open_i2c_device(bus_number, address)
+        _write_register(fd, PWR_MGMT_1, 0x00)
+        _write_register(fd, SMPLRT_DIV, 0x00)
+        _write_register(fd, CONFIG, 0x00)
+        _write_register(fd, GYRO_CONFIG, 0x08)
+        _write_register(fd, ACCEL_CONFIG, 0x00)
         time.sleep(0.05)
 
-        accel_raw = bus.read_i2c_block_data(address, ACCEL_XOUT_H, 6)
-        temp_raw = bus.read_i2c_block_data(address, TEMP_OUT_H, 2)
-        gyro_raw = bus.read_i2c_block_data(address, GYRO_XOUT_H, 6)
+        accel_raw = _read_block(fd, ACCEL_XOUT_H, 6)
+        temp_raw = _read_block(fd, TEMP_OUT_H, 2)
+        gyro_raw = _read_block(fd, GYRO_XOUT_H, 6)
 
         accel = {
             "x": _signed_word(accel_raw[0], accel_raw[1]) / ACCEL_SCALE,
@@ -92,7 +114,7 @@ def read_sensor(bus_number: int = 1, address: int = 0x68) -> None:
                 }
             )
         )
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         print(
             json.dumps(
                 {
@@ -104,7 +126,8 @@ def read_sensor(bus_number: int = 1, address: int = 0x68) -> None:
             )
         )
     finally:
-        bus.close()
+        if fd is not None:
+            os.close(fd)
 
 
 if __name__ == "__main__":
