@@ -1149,7 +1149,7 @@ function MotorPanel({ ws, disabled }) {
 }
 
 /* ===================================================================
- *  10. ACTIVE BUZZER (GPIO17)
+ *  10. ACTIVE BUZZER (GPIO25)
  * =================================================================== */
 function ActiveBuzzerPanel({ ws, disabled }) {
   const [on, setOn] = useState(false);
@@ -1157,7 +1157,7 @@ function ActiveBuzzerPanel({ ws, disabled }) {
   const toggle = async () => {
     const st = on ? "off" : "on";
     const res = await ws.send("buzzer", {
-      pin: 17,
+      pin: 25,
       state: st,
       frequency: 0,
       duration: 0,
@@ -1166,7 +1166,7 @@ function ActiveBuzzerPanel({ ws, disabled }) {
     setOutput(JSON.stringify(res.data, null, 2));
   };
   return (
-    <Card icon="🔔" title="Buzzer Actif" badge="GPIO17">
+    <Card icon="🔔" title="Buzzer Actif" badge="GPIO25">
       <button
         className={`toggle-big${on ? " active" : ""}`}
         onClick={toggle}
@@ -2781,7 +2781,7 @@ const NAV_ITEMS = [
   { id: "servo", icon: "🔄", label: "Servo Moteur", badge: "GPIO18" },
   { id: "stepper", icon: "⚙️", label: "Moteur Pas-a-Pas", badge: "GPIO" },
   { id: "motor", icon: "🔌", label: "Moteur DC", badge: "GPIO18/23/24" },
-  { id: "active_buzz", icon: "🔔", label: "Buzzer Actif", badge: "GPIO17" },
+  { id: "active_buzz", icon: "🔔", label: "Buzzer Actif", badge: "GPIO25" },
   { id: "passive_buzz", icon: "🔊", label: "Buzzer Passif", badge: "GPIO4" },
   { id: "relay", icon: "⚡", label: "Relais", badge: "GPIO12" },
 
