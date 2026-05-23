@@ -670,7 +670,11 @@ input[type="range"]::-webkit-slider-thumb {
       rgba(248, 250, 252, 0.14),
       transparent 34%
     ),
-    radial-gradient(circle at 50% 120%, rgba(71, 85, 105, 0.22), transparent 42%),
+    radial-gradient(
+      circle at 50% 120%,
+      rgba(71, 85, 105, 0.22),
+      transparent 42%
+    ),
     linear-gradient(180deg, #08111a 0%, #0f1825 58%, #0a1017 100%);
 }
 
@@ -844,7 +848,11 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   border: 1px solid rgba(250, 204, 21, 0.58);
   background:
-    radial-gradient(circle at 35% 32%, rgba(255, 255, 255, 0.28), transparent 30%),
+    radial-gradient(
+      circle at 35% 32%,
+      rgba(255, 255, 255, 0.28),
+      transparent 30%
+    ),
     linear-gradient(180deg, #fde68a 0%, #fbbf24 55%, #b45309 100%);
   box-shadow:
     inset 0 3px 5px rgba(255, 255, 255, 0.24),
@@ -872,7 +880,12 @@ input[type="range"]::-webkit-slider-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff7cc 0%, #f59e0b 45%, #92400e 100%);
+  background: radial-gradient(
+    circle at 35% 35%,
+    #fff7cc 0%,
+    #f59e0b 45%,
+    #92400e 100%
+  );
   box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12);
 }
 
@@ -1073,6 +1086,145 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--text-dim);
+}
+
+.sensor-alert {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(127, 29, 29, 0.2);
+}
+.sensor-alert-title {
+  color: #fecaca;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sensor-alert-body {
+  margin-top: 6px;
+  color: #fee2e2;
+  font-size: 0.86rem;
+}
+.sensor-alert-hint {
+  margin-top: 6px;
+  color: #fca5a5;
+  font-size: 0.76rem;
+}
+
+.diag-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.diag-result {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.diag-result-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diag-result-body {
+  margin-top: 6px;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.adc-conversion-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.94),
+    rgba(30, 41, 59, 0.9)
+  );
+}
+.adc-conversion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.adc-conversion-header span:last-child {
+  color: var(--accent);
+}
+.adc-conversion-formula {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+.adc-conversion-graph {
+  margin-top: 12px;
+}
+.adc-conversion-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(51, 65, 85, 0.9);
+  border: 1px solid rgba(71, 85, 105, 0.8);
+}
+.adc-conversion-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #22c55e 0%, #38bdf8 52%, #f59e0b 100%);
+}
+.adc-conversion-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 18px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
+  transform: translateX(-1px);
+}
+.adc-conversion-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+.adc-conversion-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.adc-stat {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  text-align: center;
+}
+.adc-stat strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.95rem;
+}
+.adc-stat-label {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ---- Detection indicator ---- */

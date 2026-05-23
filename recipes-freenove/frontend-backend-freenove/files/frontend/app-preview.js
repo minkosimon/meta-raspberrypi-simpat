@@ -1771,9 +1771,11 @@ function Mpu6050Panel({ ws, disabled }) {
     if (!polling || disabled) return;
 
     scheduleStatusPoll(refreshMs);
-    void ws.send("mpu6050_stream_start", { interval_ms: refreshMs }).then((res) => {
-      if (res.status === "ok") applyStreamData(res.data, true);
-    });
+    void ws
+      .send("mpu6050_stream_start", { interval_ms: refreshMs })
+      .then((res) => {
+        if (res.status === "ok") applyStreamData(res.data, true);
+      });
   }, [refreshMs]);
 
   return h(
@@ -1816,7 +1818,8 @@ function Mpu6050Panel({ ws, disabled }) {
                 {
                   className: "imu-gyro-gimbal",
                   style: {
-                    transform: "translate(-50%, -50%) rotate(" + globeRoll + "deg)",
+                    transform:
+                      "translate(-50%, -50%) rotate(" + globeRoll + "deg)",
                   },
                 },
                 h("div", { className: "imu-gyro-gimbal-ring" }),
@@ -1833,35 +1836,29 @@ function Mpu6050Panel({ ws, disabled }) {
                         "deg)",
                     },
                   },
-                  h(
-                    "div",
-                    {
-                      className: "imu-gyro-spin-axis",
-                      style: {
-                        transform:
-                          "translate(-50%, -50%) rotate(" + globeHeading + "deg)",
-                      },
+                  h("div", {
+                    className: "imu-gyro-spin-axis",
+                    style: {
+                      transform:
+                        "translate(-50%, -50%) rotate(" + globeHeading + "deg)",
                     },
-                  ),
+                  }),
                   h("div", { className: "imu-gyro-inner-ring" }),
                   h("div", { className: "imu-gyro-rotor-disc" }),
                   h("div", { className: "imu-gyro-rotor-hub" }),
                 ),
               ),
-              h(
-                "div",
-                {
-                  className: "imu-gyro-horizon-line",
-                  style: {
-                    transform:
-                      "translate(-50%, calc(-50% + " +
-                      globePitch +
-                      "px)) rotate(" +
-                      globeRoll +
-                      "deg)",
-                  },
+              h("div", {
+                className: "imu-gyro-horizon-line",
+                style: {
+                  transform:
+                    "translate(-50%, calc(-50% + " +
+                    globePitch +
+                    "px)) rotate(" +
+                    globeRoll +
+                    "deg)",
                 },
-              ),
+              }),
               h("div", { className: "imu-gyro-wing imu-gyro-wing-left" }),
               h("div", { className: "imu-gyro-wing imu-gyro-wing-right" }),
               h("div", { className: "imu-gyro-center" }),
@@ -2335,6 +2332,14 @@ function PotentiometerPanel({ ws, disabled }) {
   const [ch, setCh] = useState(2);
   const [data, setData] = useState(null);
   const [output, setOutput] = useState("");
+  const [scanData, setScanData] = useState(null);
+  const [refreshMs, setRefreshMs] = useState(500);
+  const timerRef = useRef(null);
+  const errorText = data?.error || "";
+  const errorHint = data?.hint || "";
+  const percent = Math.max(0, Math.min(100, Number(data?.percent ?? 0)));
+  const voltage = Number(data?.voltage ?? 0);
+  const raw = Number(data?.raw ?? 0);
   const read = async () => {
     const res = await ws.send("adc_read", { channel: ch });
     setOutput(JSON.stringify(res.data, null, 2));
@@ -2343,6 +2348,37 @@ function PotentiometerPanel({ ws, disabled }) {
         setData(JSON.parse(res.data.stdout));
       } catch {}
   };
+  const scanBus = async () => {
+    const res = await ws.send("i2c_scan", { bus: 1 });
+    if (res.status === "ok" && res.data.stdout)
+      try {
+        setScanData(JSON.parse(res.data.stdout));
+      } catch {
+        setScanData(null);
+      }
+  };
+
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (disabled) return;
+
+    void read();
+    timerRef.current = setInterval(() => {
+      void read();
+    }, refreshMs);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [ch, refreshMs, disabled]);
+
   return h(
     Card,
     { icon: "🎛️", title: "Potentiometres", badge: "ADC A2-A4" },
@@ -2363,12 +2399,129 @@ function PotentiometerPanel({ ws, disabled }) {
       ),
       h("button", { className: "btn", onClick: read, disabled }, "Lire"),
     ),
-    data &&
+    h(
+      "div",
+      { className: "field-row", style: { marginTop: 10 } },
       h(
         "div",
-        { className: "sensor-value" },
-        data.percent || data.voltage,
-        h("span", { className: "sensor-unit" }, data.percent ? " %" : " V"),
+        { className: "field", style: { flex: 1 } },
+        h("label", null, "Rafraichissement"),
+        h(
+          "select",
+          {
+            value: refreshMs,
+            onChange: (e) => setRefreshMs(+e.target.value),
+          },
+          h("option", { value: 250 }, "250 ms"),
+          h("option", { value: 500 }, "500 ms"),
+          h("option", { value: 1000 }, "1 s"),
+        ),
+      ),
+    ),
+    h(
+      "div",
+      { className: "diag-row" },
+      h(
+        "button",
+        { className: "btn ghost", onClick: scanBus, disabled },
+        "Diagnostic I2C",
+      ),
+    ),
+    data &&
+      !data.error &&
+      h(
+        React.Fragment,
+        null,
+        h(
+          "div",
+          { className: "sensor-value" },
+          percent.toFixed(1),
+          h("span", { className: "sensor-unit" }, " %"),
+        ),
+        h(
+          "div",
+          { className: "adc-conversion-card" },
+          h(
+            "div",
+            { className: "adc-conversion-header" },
+            h("span", null, "Conversion ADC 8 bits"),
+            h("span", null, data.address || "ADS7830"),
+          ),
+          h(
+            "div",
+            { className: "adc-conversion-formula" },
+            "V = brut × 3.3 / 255",
+          ),
+          h(
+            "div",
+            {
+              className: "adc-conversion-graph",
+              "aria-label": "Graphe de conversion du potentiometre",
+            },
+            h(
+              "div",
+              { className: "adc-conversion-track" },
+              h("div", {
+                className: "adc-conversion-fill",
+                style: { width: `${percent}%` },
+              }),
+              h("div", {
+                className: "adc-conversion-marker",
+                style: { left: `${percent}%` },
+              }),
+            ),
+            h(
+              "div",
+              { className: "adc-conversion-scale" },
+              h("span", null, "0 / 0.0V"),
+              h("span", null, "128 / 1.65V"),
+              h("span", null, "255 / 3.3V"),
+            ),
+          ),
+          h(
+            "div",
+            { className: "adc-conversion-stats" },
+            h(
+              "div",
+              { className: "adc-stat" },
+              h("span", { className: "adc-stat-label" }, "Brut"),
+              h("strong", null, raw),
+            ),
+            h(
+              "div",
+              { className: "adc-stat" },
+              h("span", { className: "adc-stat-label" }, "Tension"),
+              h("strong", null, `${voltage.toFixed(3)} V`),
+            ),
+            h(
+              "div",
+              { className: "adc-stat" },
+              h("span", { className: "adc-stat-label" }, "Canal"),
+              h("strong", null, `A${ch}`),
+            ),
+          ),
+        ),
+      ),
+    data?.error &&
+      h(
+        "div",
+        { className: "sensor-alert" },
+        h("div", { className: "sensor-alert-title" }, "ADC ADS7830 non detecte"),
+        h("div", { className: "sensor-alert-body" }, errorText),
+        errorHint && h("div", { className: "sensor-alert-hint" }, errorHint),
+      ),
+    scanData &&
+      h(
+        "div",
+        { className: "diag-result" },
+        h("div", { className: "diag-result-title" }, "Scan bus I2C 1"),
+        h(
+          "div",
+          { className: "diag-result-body" },
+          scanData.count > 0
+            ? scanData.devices.map((device) => device.hex).join(", ")
+            : "Aucun peripherique detecte",
+        ),
       ),
     output && h("div", { className: "output" }, output),
   );

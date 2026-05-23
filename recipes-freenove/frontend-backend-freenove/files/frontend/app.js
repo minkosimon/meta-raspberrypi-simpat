@@ -1528,9 +1528,11 @@ function Mpu6050Panel({ ws, disabled }) {
     if (!polling || disabled) return;
 
     scheduleStatusPoll(refreshMs);
-    void ws.send("mpu6050_stream_start", { interval_ms: refreshMs }).then((res) => {
-      if (res.status === "ok") applyStreamData(res.data, true);
-    });
+    void ws
+      .send("mpu6050_stream_start", { interval_ms: refreshMs })
+      .then((res) => {
+        if (res.status === "ok") applyStreamData(res.data, true);
+      });
   }, [refreshMs]);
 
   return (
@@ -1993,6 +1995,14 @@ function PotentiometerPanel({ ws, disabled }) {
   const [ch, setCh] = useState(2);
   const [data, setData] = useState(null);
   const [output, setOutput] = useState("");
+  const [scanData, setScanData] = useState(null);
+  const [refreshMs, setRefreshMs] = useState(500);
+  const timerRef = useRef(null);
+  const errorText = data?.error || "";
+  const errorHint = data?.hint || "";
+  const percent = Math.max(0, Math.min(100, Number(data?.percent ?? 0)));
+  const voltage = Number(data?.voltage ?? 0);
+  const raw = Number(data?.raw ?? 0);
   const read = async () => {
     const res = await ws.send("adc_read", { channel: ch });
     setOutput(JSON.stringify(res.data, null, 2));
@@ -2001,6 +2011,37 @@ function PotentiometerPanel({ ws, disabled }) {
         setData(JSON.parse(res.data.stdout));
       } catch {}
   };
+  const scanBus = async () => {
+    const res = await ws.send("i2c_scan", { bus: 1 });
+    if (res.status === "ok" && res.data.stdout)
+      try {
+        setScanData(JSON.parse(res.data.stdout));
+      } catch {
+        setScanData(null);
+      }
+  };
+
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (disabled) return;
+
+    void read();
+    timerRef.current = setInterval(() => {
+      void read();
+    }, refreshMs);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [ch, refreshMs, disabled]);
+
   return (
     <Card icon="🎛️" title="Potentiometres" badge="ADC A2-A4">
       <div className="field-row">
@@ -2016,10 +2057,88 @@ function PotentiometerPanel({ ws, disabled }) {
           Lire
         </button>
       </div>
-      {data && (
-        <div className="sensor-value">
-          {data.percent || data.voltage}
-          <span className="sensor-unit">{data.percent ? " %" : " V"}</span>
+      <div className="field-row" style={{ marginTop: 10 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Rafraichissement</label>
+          <select
+            value={refreshMs}
+            onChange={(e) => setRefreshMs(+e.target.value)}
+          >
+            <option value={250}>250 ms</option>
+            <option value={500}>500 ms</option>
+            <option value={1000}>1 s</option>
+          </select>
+        </div>
+      </div>
+      <div className="diag-row">
+        <button className="btn ghost" onClick={scanBus} disabled={disabled}>
+          Diagnostic I2C
+        </button>
+      </div>
+      {data && !data.error && (
+        <>
+          <div className="sensor-value">
+            {percent.toFixed(1)}
+            <span className="sensor-unit"> %</span>
+          </div>
+          <div className="adc-conversion-card">
+            <div className="adc-conversion-header">
+              <span>Conversion ADC 8 bits</span>
+              <span>{data.address || "ADS7830"}</span>
+            </div>
+            <div className="adc-conversion-formula">V = brut × 3.3 / 255</div>
+            <div
+              className="adc-conversion-graph"
+              aria-label="Graphe de conversion du potentiometre"
+            >
+              <div className="adc-conversion-track">
+                <div
+                  className="adc-conversion-fill"
+                  style={{ width: `${percent}%` }}
+                />
+                <div
+                  className="adc-conversion-marker"
+                  style={{ left: `${percent}%` }}
+                />
+              </div>
+              <div className="adc-conversion-scale">
+                <span>0 / 0.0V</span>
+                <span>128 / 1.65V</span>
+                <span>255 / 3.3V</span>
+              </div>
+            </div>
+            <div className="adc-conversion-stats">
+              <div className="adc-stat">
+                <span className="adc-stat-label">Brut</span>
+                <strong>{raw}</strong>
+              </div>
+              <div className="adc-stat">
+                <span className="adc-stat-label">Tension</span>
+                <strong>{voltage.toFixed(3)} V</strong>
+              </div>
+              <div className="adc-stat">
+                <span className="adc-stat-label">Canal</span>
+                <strong>A{ch}</strong>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {data?.error && (
+        <div className="sensor-alert">
+          <div className="sensor-alert-title">ADC ADS7830 non detecte</div>
+          <div className="sensor-alert-body">{errorText}</div>
+          {errorHint && <div className="sensor-alert-hint">{errorHint}</div>}
+        </div>
+      )}
+      {scanData && (
+        <div className="diag-result">
+          <div className="diag-result-title">Scan bus I2C 1</div>
+          <div className="diag-result-body">
+            {scanData.count > 0
+              ? scanData.devices.map((device) => device.hex).join(", ")
+              : "Aucun peripherique detecte"}
+          </div>
         </div>
       )}
       {output && <div className="output">{output}</div>}
