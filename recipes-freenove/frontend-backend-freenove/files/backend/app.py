@@ -45,6 +45,7 @@ bridge = SSHBridge()
 
 LOCAL_SSH_HOSTS = {"127.0.0.1", "localhost", "::1"}
 DISPLAY_DAEMON_PATTERNS = ("led_matrix.py", "seven_segment.py")
+FREENOVE_DRIVER_MODULE = "freenove_driver"
 MPU6050_STREAM_DEFAULT_INTERVAL_MS = 700
 MPU6050_STREAM_MIN_INTERVAL_MS = 150
 MPU6050_STREAM_MAX_INTERVAL_MS = 5000
@@ -182,6 +183,35 @@ async def _stop_display_daemons() -> dict:
         _build_process_kill_command(DISPLAY_DAEMON_PATTERNS),
         timeout=5,
     )
+
+
+async def _set_freenove_driver_enabled(enabled: bool) -> dict:
+    if enabled:
+        command = (
+            f"if [ -d /sys/module/{FREENOVE_DRIVER_MODULE} ]; then "
+            f"echo already_loaded; else modprobe {FREENOVE_DRIVER_MODULE}; fi"
+        )
+    else:
+        command = (
+            f"if [ -d /sys/module/{FREENOVE_DRIVER_MODULE} ]; then "
+            f"modprobe -r {FREENOVE_DRIVER_MODULE}; else echo already_unloaded; fi"
+        )
+
+    result = await _run_board_command(command, timeout=10)
+    loaded = False
+    status_check = await _run_board_command(
+        f"if [ -d /sys/module/{FREENOVE_DRIVER_MODULE} ]; then echo loaded; else echo unloaded; fi",
+        timeout=5,
+    )
+    if isinstance(status_check, dict):
+        loaded = status_check.get("stdout", "").strip() == "loaded"
+
+    return {
+        "enabled": enabled,
+        "loaded": loaded,
+        "result": result,
+        "status_check": status_check,
+    }
 
 
 def _normalize_mpu6050_interval(interval_ms: object) -> int:
@@ -360,13 +390,19 @@ async def dispatch(action: str, params: dict) -> dict:
         previous_panel = str(params.get("previous_panel", ""))
         panel = str(params.get("panel", ""))
         result = await _stop_display_daemons()
+        driver_result = None
         if previous_panel == "mpu6050" and panel != "mpu6050":
             await _stop_mpu6050_stream()
+        if panel == "keypad":
+            driver_result = await _set_freenove_driver_enabled(False)
+        elif previous_panel == "keypad" and panel != "keypad":
+            driver_result = await _set_freenove_driver_enabled(True)
         return {
             "previous_panel": previous_panel,
             "panel": panel,
             "stopped": list(DISPLAY_DAEMON_PATTERNS),
             "result": result,
+            "driver": driver_result,
         }
 
     # --- Freenove driver LEDs (/sys/class/leds/freenove:ledX) ---
@@ -518,6 +554,20 @@ async def dispatch(action: str, params: dict) -> dict:
     if action == "dht_read":
         pin = int(params.get("pin", 17))
         return await _run_board_script("dht_read.py", str(pin))
+
+    # --- Matrix keypad 4x4 ---
+    if action == "keypad_read":
+        timeout_ms = int(params.get("timeout_ms", 120))
+        debounce_ms = int(params.get("debounce_ms", 50))
+        driver_result = await _set_freenove_driver_enabled(False)
+        script_result = await _run_board_script(
+            "keypad_read.py",
+            f"{timeout_ms} {debounce_ms}",
+        )
+        return {
+            "driver": driver_result,
+            **script_result,
+        }
 
     # --- Ultrasonic HC-SR04 ---
     if action == "ultrasonic_read":

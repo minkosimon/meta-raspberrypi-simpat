@@ -2219,53 +2219,242 @@ function RfidPanel({ ws, disabled }) {
  * =================================================================== */
 function KeypadPanel({ ws, disabled }) {
   const [lastKey, setLastKey] = useState("");
+  const [lastPosition, setLastPosition] = useState(null);
+  const [history, setHistory] = useState([]);
   const [output, setOutput] = useState("");
+  const [reading, setReading] = useState(false);
+  const [polling, setPolling] = useState(true);
+  const [refreshMs, setRefreshMs] = useState(180);
+  const [lastScanAt, setLastScanAt] = useState("");
+  const timerRef = useRef(null);
+  const inFlightRef = useRef(false);
   const keys = [
-    "1",
-    "2",
-    "3",
-    "A",
-    "4",
-    "5",
-    "6",
-    "B",
-    "7",
-    "8",
-    "9",
-    "C",
-    "*",
-    "0",
-    "#",
-    "D",
+    ["1", "2", "3", "A"],
+    ["4", "5", "6", "B"],
+    ["7", "8", "9", "C"],
+    ["*", "0", "#", "D"],
   ];
-  const read = async () => {
-    const res = await ws.send("keypad_read");
-    setOutput(JSON.stringify(res.data, null, 2));
-    if (res.status === "ok" && res.data.stdout)
-      try {
-        setLastKey(JSON.parse(res.data.stdout).key);
-      } catch {}
+  const rowPins = [16, 20, 21, 26];
+  const colPins = [19, 13, 6, 5];
+  const readKey = async ({ timeoutMs, showOutput }) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    if (showOutput) setReading(true);
+
+    try {
+      const res = await ws.send("keypad_read", {
+        timeout_ms: timeoutMs,
+        debounce_ms: 50,
+      });
+
+      let nextKey = "";
+      let nextPosition = null;
+      if (res.status === "ok" && res.data?.stdout) {
+        try {
+          const parsed = JSON.parse(res.data.stdout);
+          nextKey = typeof parsed.key === "string" ? parsed.key.trim() : "";
+          if (parsed && parsed.pressed) {
+            nextPosition = {
+              rowIndex: parsed.row_index,
+              colIndex: parsed.col_index,
+              rowPin: parsed.row_pin,
+              colPin: parsed.col_pin,
+            };
+          }
+        } catch {
+          nextKey = String(res.data.stdout).trim();
+        }
+      }
+
+      if (showOutput || res.status !== "ok" || nextKey) {
+        setOutput(JSON.stringify(res.data, null, 2));
+      }
+
+      if (nextKey) {
+        setLastKey(nextKey);
+        setHistory((prev) => [...prev, nextKey].slice(-12));
+        setLastPosition(nextPosition);
+      }
+
+      setLastScanAt(new Date().toLocaleTimeString("fr-FR"));
+    } finally {
+      if (showOutput) setReading(false);
+      inFlightRef.current = false;
+    }
   };
+  const read = async () => {
+    await readKey({ timeoutMs: 900, showOutput: true });
+  };
+  const stopPolling = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    setPolling(false);
+  };
+  const togglePolling = () => {
+    setPolling((prev) => !prev);
+  };
+  const clear = () => {
+    setLastKey("");
+    setLastPosition(null);
+    setHistory([]);
+    setOutput("");
+  };
+  useEffect(() => {
+    if (!polling || disabled) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      return;
+    }
+
+    void readKey({ timeoutMs: 70, showOutput: false });
+    timerRef.current = setInterval(() => {
+      void readKey({ timeoutMs: 70, showOutput: false });
+    }, refreshMs);
+
+    return () => {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [polling, refreshMs, disabled]);
+
+  useEffect(() => {
+    if (disabled && polling) stopPolling();
+  }, [disabled, polling]);
+
+  useEffect(
+    () => () => {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    },
+    [],
+  );
   return (
-    <Card icon="⌨️" title="Clavier Matriciel 4x4" badge="GPIO">
-      <div className="keypad-grid">
-        {keys.map((k) => (
-          <div key={k} className={`key-btn${lastKey === k ? " pressed" : ""}`}>
-            {k}
+    <Card
+      icon="⌨️"
+      title="Clavier Matriciel 4x4"
+      badge="R16/20/21/26 C19/13/6/5"
+    >
+      <div className="keypad-summary">
+        <span className="keypad-code-pill">keys[4][4]</span>
+        <span className="keypad-code-pill">keypad.getKey()</span>
+        <span className="keypad-code-pill">debounce 50 ms</span>
+      </div>
+      <div className="keypad-display">
+        <div className="keypad-display-label">Derniere touche</div>
+        <div className="keypad-display-value">{lastKey || "—"}</div>
+      </div>
+      <div className="keypad-display keypad-display-secondary">
+        <div className="keypad-display-label">Sequence lue</div>
+        <div className="keypad-display-value keypad-sequence">
+          {history.length ? history.join(" ") : "En attente d'une touche"}
+        </div>
+      </div>
+      <div className="keypad-position-grid">
+        <div className="keypad-position-card">
+          <div className="keypad-display-label">Position matrice</div>
+          <div className="keypad-position-value">
+            {lastPosition
+              ? `row ${lastPosition.rowIndex + 1} / col ${lastPosition.colIndex + 1}`
+              : "—"}
           </div>
-        ))}
+        </div>
+        <div className="keypad-position-card">
+          <div className="keypad-display-label">GPIO actifs</div>
+          <div className="keypad-position-value keypad-position-gpio">
+            {lastPosition
+              ? `R${lastPosition.rowPin} / C${lastPosition.colPin}`
+              : "—"}
+          </div>
+        </div>
       </div>
-      <div style={{ textAlign: "center", margin: "8px 0", fontSize: ".85rem" }}>
-        Derniere touche: <strong>{lastKey || "—"}</strong>
+      <div className="keypad-meta-row">
+        <span className={`keypad-status-chip ${polling ? "live" : "idle"}`}>
+          {polling ? `Auto ${refreshMs} ms` : "Lecture manuelle"}
+        </span>
+        <span className="keypad-status-chip">
+          Dernier scan: {lastScanAt || "—"}
+        </span>
       </div>
-      <button
-        className="btn"
-        onClick={read}
-        disabled={disabled}
-        style={{ width: "100%" }}
-      >
-        Lire touche
-      </button>
+      <div className="keypad-wire-grid">
+        <div className="keypad-wire-card">
+          <span>Lignes</span>
+          <strong>GPIO16, GPIO20, GPIO21, GPIO26</strong>
+        </div>
+        <div className="keypad-wire-card">
+          <span>Colonnes</span>
+          <strong>GPIO19, GPIO13, GPIO6, GPIO5</strong>
+        </div>
+      </div>
+      <div className="keypad-matrix-shell">
+        <div className="keypad-axis keypad-axis-top">
+          <span className="keypad-axis-label">COL</span>
+          {colPins.map((pin) => (
+            <span key={pin} className="keypad-axis-pin">
+              {pin}
+            </span>
+          ))}
+        </div>
+        <div className="keypad-matrix-body">
+          <div className="keypad-axis keypad-axis-side">
+            <span className="keypad-axis-label">ROW</span>
+            {rowPins.map((pin) => (
+              <span key={pin} className="keypad-axis-pin">
+                {pin}
+              </span>
+            ))}
+          </div>
+          <div className="keypad-grid">
+            {keys.flat().map((key) => (
+              <div
+                key={key}
+                className={`key-btn${lastKey === key ? " pressed" : ""}`}
+              >
+                {key}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="keypad-toolbar">
+        <label className="keypad-refresh">
+          Auto scan
+          <select
+            value={refreshMs}
+            onChange={(e) => setRefreshMs(Number(e.target.value))}
+            disabled={disabled}
+          >
+            <option value={120}>120 ms</option>
+            <option value={180}>180 ms</option>
+            <option value={250}>250 ms</option>
+            <option value={400}>400 ms</option>
+          </select>
+        </label>
+      </div>
+      <div className="keypad-actions">
+        <button
+          className="btn"
+          onClick={read}
+          disabled={disabled || reading}
+          style={{ flex: 1.2 }}
+        >
+          {reading ? "Lecture..." : "Lire touche"}
+        </button>
+        <button
+          className={`btn ${polling ? "danger" : "success"}`}
+          onClick={togglePolling}
+          disabled={disabled}
+          style={{ flex: 1 }}
+        >
+          {polling ? "Stop Auto" : "Auto"}
+        </button>
+        <button className="btn secondary" onClick={clear} style={{ flex: 1 }}>
+          Effacer
+        </button>
+      </div>
+      <div className="hint" style={{ marginTop: 10 }}>
+        Exemple Freenove: lecture continue via keypad.getKey() avec anti-rebond
+        a 50 ms.
+      </div>
       {output && <div className="output">{output}</div>}
     </Card>
   );
@@ -2921,7 +3110,12 @@ const NAV_ITEMS = [
   { id: "button", icon: "🔘", label: "Bouton", badge: "GPIO16" },
   { id: "joystick", icon: "🕹️", label: "JoyStick", badge: "ADC" },
   { id: "potentiom", icon: "🎛️", label: "Potentiometres", badge: "ADC" },
-  { id: "keypad", icon: "⌨️", label: "Clavier 4x4", badge: "GPIO" },
+  {
+    id: "keypad",
+    icon: "⌨️",
+    label: "Clavier 4x4",
+    badge: "R16/20/21/26 C19/13/6/5",
+  },
   { id: "rfid", icon: "💳", label: "RFID-RC522", badge: "SPI" },
 
   { section: "📟 Communication" },

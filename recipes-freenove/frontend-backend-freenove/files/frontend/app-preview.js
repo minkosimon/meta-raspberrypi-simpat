@@ -2506,7 +2506,11 @@ function PotentiometerPanel({ ws, disabled }) {
       h(
         "div",
         { className: "sensor-alert" },
-        h("div", { className: "sensor-alert-title" }, "ADC ADS7830 non detecte"),
+        h(
+          "div",
+          { className: "sensor-alert-title" },
+          "ADC ADS7830 non detecte",
+        ),
         h("div", { className: "sensor-alert-body" }, errorText),
         errorHint && h("div", { className: "sensor-alert-hint" }, errorHint),
       ),
@@ -2614,57 +2618,298 @@ function RfidPanel({ ws, disabled }) {
  * =================================================================== */
 function KeypadPanel({ ws, disabled }) {
   const [lastKey, setLastKey] = useState("");
+  const [lastPosition, setLastPosition] = useState(null);
+  const [history, setHistory] = useState([]);
   const [output, setOutput] = useState("");
+  const [reading, setReading] = useState(false);
+  const [polling, setPolling] = useState(true);
+  const [refreshMs, setRefreshMs] = useState(180);
+  const [lastScanAt, setLastScanAt] = useState("");
+  const timerRef = useRef(null);
+  const inFlightRef = useRef(false);
   const keys = [
-    "1",
-    "2",
-    "3",
-    "A",
-    "4",
-    "5",
-    "6",
-    "B",
-    "7",
-    "8",
-    "9",
-    "C",
-    "*",
-    "0",
-    "#",
-    "D",
+    ["1", "2", "3", "A"],
+    ["4", "5", "6", "B"],
+    ["7", "8", "9", "C"],
+    ["*", "0", "#", "D"],
   ];
-  const read = async () => {
-    const res = await ws.send("keypad_read");
-    setOutput(JSON.stringify(res.data, null, 2));
-    if (res.status === "ok" && res.data.stdout)
-      try {
-        setLastKey(JSON.parse(res.data.stdout).key);
-      } catch {}
+  const rowPins = [16, 20, 21, 26];
+  const colPins = [19, 13, 6, 5];
+  const readKey = async ({ timeoutMs, showOutput }) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    if (showOutput) setReading(true);
+
+    try {
+      const res = await ws.send("keypad_read", {
+        timeout_ms: timeoutMs,
+        debounce_ms: 50,
+      });
+
+      let nextKey = "";
+      let nextPosition = null;
+      if (res.status === "ok" && res.data && res.data.stdout) {
+        try {
+          const parsed = JSON.parse(res.data.stdout);
+          nextKey = typeof parsed.key === "string" ? parsed.key.trim() : "";
+          if (parsed && parsed.pressed) {
+            nextPosition = {
+              rowIndex: parsed.row_index,
+              colIndex: parsed.col_index,
+              rowPin: parsed.row_pin,
+              colPin: parsed.col_pin,
+            };
+          }
+        } catch {
+          nextKey = String(res.data.stdout).trim();
+        }
+      }
+
+      if (showOutput || res.status !== "ok" || nextKey) {
+        setOutput(JSON.stringify(res.data, null, 2));
+      }
+
+      if (nextKey) {
+        setLastKey(nextKey);
+        setHistory((prev) => [...prev, nextKey].slice(-12));
+        setLastPosition(nextPosition);
+      }
+
+      setLastScanAt(new Date().toLocaleTimeString("fr-FR"));
+    } finally {
+      if (showOutput) setReading(false);
+      inFlightRef.current = false;
+    }
   };
+  const read = async () => {
+    await readKey({ timeoutMs: 900, showOutput: true });
+  };
+  const stopPolling = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    setPolling(false);
+  };
+  const togglePolling = () => {
+    setPolling((prev) => !prev);
+  };
+  const clear = () => {
+    setLastKey("");
+    setLastPosition(null);
+    setHistory([]);
+    setOutput("");
+  };
+  useEffect(() => {
+    if (!polling || disabled) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      return;
+    }
+
+    void readKey({ timeoutMs: 70, showOutput: false });
+    timerRef.current = setInterval(() => {
+      void readKey({ timeoutMs: 70, showOutput: false });
+    }, refreshMs);
+
+    return () => {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [polling, refreshMs, disabled]);
+
+  useEffect(() => {
+    if (disabled && polling) stopPolling();
+  }, [disabled, polling]);
+
+  useEffect(
+    () => () => {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    },
+    [],
+  );
   return h(
     Card,
-    { icon: "⌨️", title: "Clavier Matriciel 4x4", badge: "GPIO" },
+    {
+      icon: "⌨️",
+      title: "Clavier Matriciel 4x4",
+      badge: "R16/20/21/26 C19/13/6/5",
+    },
     h(
       "div",
-      { className: "keypad-grid" },
-      keys.map((k) =>
+      { className: "keypad-summary" },
+      h("span", { className: "keypad-code-pill" }, "keys[4][4]"),
+      h("span", { className: "keypad-code-pill" }, "keypad.getKey()"),
+      h("span", { className: "keypad-code-pill" }, "debounce 50 ms"),
+    ),
+    h(
+      "div",
+      { className: "keypad-display" },
+      h("div", { className: "keypad-display-label" }, "Derniere touche"),
+      h("div", { className: "keypad-display-value" }, lastKey || "—"),
+    ),
+    h(
+      "div",
+      { className: "keypad-display keypad-display-secondary" },
+      h("div", { className: "keypad-display-label" }, "Sequence lue"),
+      h(
+        "div",
+        { className: "keypad-display-value keypad-sequence" },
+        history.length ? history.join(" ") : "En attente d'une touche",
+      ),
+    ),
+    h(
+      "div",
+      { className: "keypad-position-grid" },
+      h(
+        "div",
+        { className: "keypad-position-card" },
+        h("div", { className: "keypad-display-label" }, "Position matrice"),
         h(
           "div",
-          { key: k, className: "key-btn" + (lastKey === k ? " pressed" : "") },
-          k,
+          { className: "keypad-position-value" },
+          lastPosition
+            ? `row ${lastPosition.rowIndex + 1} / col ${lastPosition.colIndex + 1}`
+            : "—",
+        ),
+      ),
+      h(
+        "div",
+        { className: "keypad-position-card" },
+        h("div", { className: "keypad-display-label" }, "GPIO actifs"),
+        h(
+          "div",
+          { className: "keypad-position-value keypad-position-gpio" },
+          lastPosition
+            ? `R${lastPosition.rowPin} / C${lastPosition.colPin}`
+            : "—",
         ),
       ),
     ),
     h(
       "div",
-      { style: { textAlign: "center", margin: "8px 0", fontSize: ".85rem" } },
-      "Derniere touche: ",
-      h("strong", null, lastKey || "—"),
+      { className: "keypad-meta-row" },
+      h(
+        "span",
+        {
+          className: "keypad-status-chip " + (polling ? "live" : "idle"),
+        },
+        polling ? `Auto ${refreshMs} ms` : "Lecture manuelle",
+      ),
+      h(
+        "span",
+        { className: "keypad-status-chip" },
+        "Dernier scan: ",
+        lastScanAt || "—",
+      ),
     ),
     h(
-      "button",
-      { className: "btn", onClick: read, disabled, style: { width: "100%" } },
-      "Lire touche",
+      "div",
+      { className: "keypad-wire-grid" },
+      h(
+        "div",
+        { className: "keypad-wire-card" },
+        h("span", null, "Lignes"),
+        h("strong", null, "GPIO16, GPIO20, GPIO21, GPIO26"),
+      ),
+      h(
+        "div",
+        { className: "keypad-wire-card" },
+        h("span", null, "Colonnes"),
+        h("strong", null, "GPIO19, GPIO13, GPIO6, GPIO5"),
+      ),
+    ),
+    h(
+      "div",
+      { className: "keypad-matrix-shell" },
+      h(
+        "div",
+        { className: "keypad-axis keypad-axis-top" },
+        h("span", { className: "keypad-axis-label" }, "COL"),
+        colPins.map((pin) =>
+          h("span", { key: pin, className: "keypad-axis-pin" }, pin),
+        ),
+      ),
+      h(
+        "div",
+        { className: "keypad-matrix-body" },
+        h(
+          "div",
+          { className: "keypad-axis keypad-axis-side" },
+          h("span", { className: "keypad-axis-label" }, "ROW"),
+          rowPins.map((pin) =>
+            h("span", { key: pin, className: "keypad-axis-pin" }, pin),
+          ),
+        ),
+        h(
+          "div",
+          { className: "keypad-grid" },
+          keys.flat().map((key) =>
+            h(
+              "div",
+              {
+                key,
+                className: "key-btn" + (lastKey === key ? " pressed" : ""),
+              },
+              key,
+            ),
+          ),
+        ),
+      ),
+    ),
+    h(
+      "div",
+      { className: "keypad-toolbar" },
+      h(
+        "label",
+        { className: "keypad-refresh" },
+        "Auto scan",
+        h(
+          "select",
+          {
+            value: refreshMs,
+            onChange: (e) => setRefreshMs(Number(e.target.value)),
+            disabled,
+          },
+          h("option", { value: 120 }, "120 ms"),
+          h("option", { value: 180 }, "180 ms"),
+          h("option", { value: 250 }, "250 ms"),
+          h("option", { value: 400 }, "400 ms"),
+        ),
+      ),
+    ),
+    h(
+      "div",
+      { className: "keypad-actions" },
+      h(
+        "button",
+        {
+          className: "btn",
+          onClick: read,
+          disabled: disabled || reading,
+          style: { flex: 1.2 },
+        },
+        reading ? "Lecture..." : "Lire touche",
+      ),
+      h(
+        "button",
+        {
+          className: "btn " + (polling ? "danger" : "success"),
+          onClick: togglePolling,
+          disabled,
+          style: { flex: 1 },
+        },
+        polling ? "Stop Auto" : "Auto",
+      ),
+      h(
+        "button",
+        { className: "btn secondary", onClick: clear, style: { flex: 1 } },
+        "Effacer",
+      ),
+    ),
+    h(
+      "div",
+      { className: "hint", style: { marginTop: 10 } },
+      "Exemple Freenove: lecture continue via keypad.getKey() avec anti-rebond a 50 ms.",
     ),
     output && h("div", { className: "output" }, output),
   );
@@ -3441,7 +3686,12 @@ const NAV_ITEMS = [
   { id: "button", icon: "🔘", label: "Bouton", badge: "GPIO16" },
   { id: "joystick", icon: "🕹️", label: "JoyStick", badge: "ADC" },
   { id: "potentiom", icon: "🎛️", label: "Potentiometres", badge: "ADC" },
-  { id: "keypad", icon: "⌨️", label: "Clavier 4x4", badge: "GPIO" },
+  {
+    id: "keypad",
+    icon: "⌨️",
+    label: "Clavier 4x4",
+    badge: "R16/20/21/26 C19/13/6/5",
+  },
   { id: "rfid", icon: "💳", label: "RFID-RC522", badge: "SPI" },
 
   { section: "📟 Communication" },
