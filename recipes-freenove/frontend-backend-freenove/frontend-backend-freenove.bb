@@ -19,6 +19,7 @@ SRC_URI = " \
     file://board-scripts/adc_read.py \
     file://board-scripts/mpu6050_read.py \
     file://board-scripts/dht_read.py \
+    file://board-scripts/ir_motion_read.py \
     file://board-scripts/keypad_read.py \
     file://board-scripts/ultrasonic.py \
     file://board-scripts/buzzer.py \

@@ -393,9 +393,9 @@ async def dispatch(action: str, params: dict) -> dict:
         driver_result = None
         if previous_panel == "mpu6050" and panel != "mpu6050":
             await _stop_mpu6050_stream()
-        if panel == "keypad":
+        if panel in {"keypad", "ir_motion"}:
             driver_result = await _set_freenove_driver_enabled(False)
-        elif previous_panel == "keypad" and panel != "keypad":
+        elif previous_panel in {"keypad", "ir_motion"} and panel not in {"keypad", "ir_motion"}:
             driver_result = await _set_freenove_driver_enabled(True)
         return {
             "previous_panel": previous_panel,
@@ -555,6 +555,22 @@ async def dispatch(action: str, params: dict) -> dict:
         pin = int(params.get("pin", 17))
         return await _run_board_script("dht_read.py", str(pin))
 
+    # --- PIR infrared motion sensor (HC-SR501) ---
+    if action == "ir_motion_read":
+        pin = int(params.get("pin", 24))
+        driver_result = await _set_freenove_driver_enabled(False)
+        result = await _run_board_script("ir_motion_read.py", str(pin))
+        parsed = _parse_board_json(result) or {}
+        return {
+            "pin": pin,
+            "detected": bool(parsed.get("detected", False)),
+            "value": int(parsed.get("value", 0))
+            if isinstance(parsed.get("value", 0), (int, bool))
+            else 0,
+            "driver": driver_result,
+            "result": result,
+        }
+
     # --- Matrix keypad 4x4 ---
     if action == "keypad_read":
         timeout_ms = int(params.get("timeout_ms", 120))
@@ -571,8 +587,8 @@ async def dispatch(action: str, params: dict) -> dict:
 
     # --- Ultrasonic HC-SR04 ---
     if action == "ultrasonic_read":
-        trig = int(params.get("trig_pin", 23))
-        echo = int(params.get("echo_pin", 24))
+        trig = int(params.get("trig_pin", 20))
+        echo = int(params.get("echo_pin", 21))
         return await _run_board_script("ultrasonic.py", f"{trig} {echo}")
 
     # --- MPU6050 ---

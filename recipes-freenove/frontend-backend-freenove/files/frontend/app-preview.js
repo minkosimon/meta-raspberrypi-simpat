@@ -2057,34 +2057,77 @@ function Mpu6050Panel({ ws, disabled }) {
 }
 
 /* ===================================================================
- *  16. IR MOTION SENSOR  (GPIO14)
+ *  16. IR MOTION SENSOR  (GPIO24)
  * =================================================================== */
 function IrMotionPanel({ ws, disabled }) {
   const [detected, setDetected] = useState(false);
+  const [sensorData, setSensorData] = useState(null);
   const [output, setOutput] = useState("");
+  const [lastError, setLastError] = useState("");
   const [polling, setPolling] = useState(false);
   const timerRef = useRef(null);
+  const pollingRef = useRef(false);
+  const readingRef = useRef(false);
   const read = async () => {
-    const res = await ws.send("ir_motion_read", { pin: 14 });
-    setOutput(JSON.stringify(res.data, null, 2));
-    if (res.status === "ok" && res.data.stdout)
-      try {
-        setDetected(JSON.parse(res.data.stdout).detected);
-      } catch {}
-  };
-  const togglePoll = () => {
-    if (polling) {
-      clearInterval(timerRef.current);
-      setPolling(false);
-    } else {
-      setPolling(true);
-      timerRef.current = setInterval(read, 800);
+    if (readingRef.current) return;
+    readingRef.current = true;
+    try {
+      const res = await ws.send("ir_motion_read", { pin: 24 });
+      setOutput(JSON.stringify(res.data, null, 2));
+      const stderr = (
+        (res && res.data && res.data.result && res.data.result.stderr) ||
+        ""
+      ).trim();
+      if (res.status === "ok" && res.data.result?.stdout)
+        try {
+          const parsed = JSON.parse(res.data.result.stdout);
+          setSensorData(parsed);
+          setDetected(Boolean(parsed.detected));
+          setLastError("");
+          return;
+        } catch {}
+      setSensorData(null);
+      setDetected(false);
+      setLastError(stderr || "Lecture PIR indisponible");
+    } catch (err) {
+      setSensorData(null);
+      setDetected(false);
+      setLastError(
+        err instanceof Error ? err.message : "Lecture PIR indisponible",
+      );
+    } finally {
+      readingRef.current = false;
     }
   };
-  useEffect(() => () => clearInterval(timerRef.current), []);
+  const scheduleNextRead = () => {
+    clearTimeout(timerRef.current);
+    if (!pollingRef.current) return;
+    timerRef.current = setTimeout(async () => {
+      await read();
+      scheduleNextRead();
+    }, 800);
+  };
+  const togglePoll = () => {
+    if (pollingRef.current) {
+      pollingRef.current = false;
+      clearTimeout(timerRef.current);
+      setPolling(false);
+    } else {
+      pollingRef.current = true;
+      setPolling(true);
+      read().finally(scheduleNextRead);
+    }
+  };
+  useEffect(
+    () => () => {
+      pollingRef.current = false;
+      clearTimeout(timerRef.current);
+    },
+    [],
+  );
   return h(
     Card,
-    { icon: "👁️", title: "Capteur IR Mouvement", badge: "GPIO14" },
+    { icon: "👁️", title: "Capteur PIR HC-SR501", badge: "GPIO24" },
     h(
       "div",
       { className: "detect-indicator" + (detected ? " detected" : "") },
@@ -2093,8 +2136,51 @@ function IrMotionPanel({ ws, disabled }) {
     h(
       "div",
       { style: { textAlign: "center", fontSize: ".85rem", marginBottom: 8 } },
-      detected ? "Mouvement detecte !" : "Aucun mouvement",
+      detected ? "Mouvement detecte" : "Aucun mouvement",
     ),
+    h(
+      "div",
+      {
+        style: {
+          textAlign: "center",
+          fontSize: ".78rem",
+          marginBottom: 10,
+          color: detected
+            ? "#86efac"
+            : lastError
+              ? "#fca5a5"
+              : "var(--text-dim)",
+        },
+      },
+      detected
+        ? "Presence detectee par le capteur"
+        : lastError
+          ? lastError.split("\n")[0]
+          : "Capteur au repos",
+    ),
+    h(
+      "div",
+      {
+        style: {
+          marginBottom: 10,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: "1px solid var(--border)",
+          background: "rgba(51, 65, 85, 0.45)",
+          fontSize: ".78rem",
+          color: "var(--text-dim)",
+          lineHeight: 1.45,
+        },
+      },
+      "Signal actif a l'etat haut. Apres mise sous tension, le capteur peut demander jusqu'a 60 s d'initialisation.",
+    ),
+    sensorData &&
+      h(
+        "div",
+        { className: "output", style: { marginTop: 0, marginBottom: 10 } },
+        `Niveau brut: ${sensorData.value}\nEtat: ${sensorData.detected ? "HIGH / detection" : "LOW / repos"}`,
+      ),
+    lastError && h("div", { className: "output" }, lastError),
     h(
       "div",
       { style: { display: "flex", gap: 8 } },
@@ -3678,7 +3764,7 @@ const NAV_ITEMS = [
     badge: "GPIO20/21",
   },
   { id: "mpu6050", icon: "🎯", label: "MPU6050", badge: "I2C" },
-  { id: "ir_motion", icon: "👁️", label: "Capteur IR", badge: "GPIO14" },
+  { id: "ir_motion", icon: "👁️", label: "Capteur PIR", badge: "GPIO24" },
   { id: "photoresist", icon: "☀️", label: "Photoresistance", badge: "ADC" },
   { id: "thermistor", icon: "🌡️", label: "Thermistance", badge: "ADC" },
 

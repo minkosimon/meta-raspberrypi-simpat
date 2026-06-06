@@ -289,8 +289,8 @@ GPIO17 ── 220Ω ── LED_R               (RGB)
 GPIO27 ── 220Ω ── LED_G       ── 3.3V (anode commune)
 GPIO22 ── 220Ω ── LED_B
 GPIO18 ── Servo SG90 signal           (PWM 50 Hz)
-GPIO23 ── HC-SR04 Trig                (ultrason)
-GPIO24 ── HC-SR04 Echo
+GPIO20 ── HC-SR04 Trig                (ultrason)
+GPIO21 ── HC-SR04 Echo
 GPIO25 ── Buzzer ── GND
 SDA/SCL ── ADS7830 (0x4B)             (ADC I2C)
 GPIO17  ── DHT11 data (+ 10kΩ pullup)
