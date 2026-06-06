@@ -1490,6 +1490,126 @@ input[type="range"]::-webkit-slider-thumb {
   letter-spacing: 0.04em;
 }
 
+.ultra-wave {
+  position: relative;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.92),
+    rgba(2, 6, 23, 0.92)
+  );
+  overflow: hidden;
+}
+
+.ultra-wave::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.08) 0,
+    rgba(148, 163, 184, 0.08) 1px,
+    transparent 1px,
+    transparent 22px
+  );
+  opacity: 0.55;
+}
+
+.ultra-wave-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid rgba(148, 163, 184, 0.3);
+}
+
+.ultra-wave-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -16%;
+  width: 16%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(56, 189, 248, 0.28),
+    transparent
+  );
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ultra-wave.active .ultra-wave-scan {
+  opacity: 1;
+  animation: ultra-wave-scan 1.8s linear infinite;
+}
+
+.ultra-wave-pulse {
+  position: absolute;
+  top: 4px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.ultra-wave-pulse-trigger {
+  left: 14%;
+  width: 7%;
+  min-width: 18px;
+  background: linear-gradient(180deg, #f59e0b, #f97316);
+  box-shadow: 0 0 18px rgba(249, 115, 22, 0.35);
+}
+
+.ultra-wave.active .ultra-wave-pulse-trigger {
+  animation: ultra-trigger-pulse 1.8s ease-in-out infinite;
+}
+
+.ultra-wave-pulse-echo {
+  left: 22%;
+  background: linear-gradient(180deg, #38bdf8, #2563eb);
+  box-shadow: 0 0 22px rgba(37, 99, 235, 0.3);
+}
+
+.ultra-wave.active .ultra-wave-pulse-echo {
+  animation: ultra-echo-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes ultra-wave-scan {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(760%);
+  }
+}
+
+@keyframes ultra-trigger-pulse {
+  0%,
+  72%,
+  100% {
+    transform: scaleY(0.96);
+    opacity: 0.78;
+  }
+  8%,
+  16% {
+    transform: scaleY(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes ultra-echo-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    filter: saturate(0.92);
+  }
+  50% {
+    opacity: 1;
+    filter: saturate(1.1);
+  }
+}
+
 /* ---- Detection indicator ---- */
 .detect-indicator {
   width: 80px;

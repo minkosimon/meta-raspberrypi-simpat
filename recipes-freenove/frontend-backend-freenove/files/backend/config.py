@@ -1,11 +1,29 @@
-"""
-Configuration for the Freenove FNK0054 Test Backend.
-"""
+"""Configuration for the Freenove FNK0054 test backend."""
+
 import os
+from pathlib import Path
 
 
 def _parse_origins(value: str) -> tuple[str, ...]:
     return tuple(origin.strip().rstrip("/") for origin in value.split(",") if origin.strip())
+
+
+def _read_dt_u32(path: str) -> int | None:
+    dt_path = Path(path)
+    try:
+        data = dt_path.read_bytes()
+    except OSError:
+        return None
+    if len(data) < 4:
+        return None
+    return int.from_bytes(data[:4], byteorder="big", signed=False)
+
+
+def _resolve_i2c_bus() -> int:
+    dt_bus = _read_dt_u32("/proc/device-tree/freenove_board/freenove,i2c-bus")
+    if dt_bus is not None:
+        return dt_bus
+    return int(os.environ.get("FNK_I2C_BUS", "1"))
 
 # WebSocket / HTTP server
 WS_HOST = os.environ.get("FNK_WS_HOST", "0.0.0.0")
@@ -41,5 +59,6 @@ AVAILABLE_GPIO_PINS = [
 PWM_PINS = [12, 13, 18, 19]
 
 # I2C bus number for the user-facing I2C controller on this image.
-# Allow override from the environment when a different device mapping is used.
-I2C_BUS = int(os.environ.get("FNK_I2C_BUS", "1"))
+# The runtime device tree overlay is the source of truth; the environment stays
+# as a fallback for development hosts or images without the overlay applied.
+I2C_BUS = _resolve_i2c_bus()

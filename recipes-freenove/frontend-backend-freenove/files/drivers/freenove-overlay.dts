@@ -10,6 +10,9 @@
         __overlay__ {
             freenove_board: freenove_board {
                 compatible = "simpat,freenove-driver";
+                freenove,i2c-bus = <1>;
+                freenove,adc-address = <0x4b>;
+                freenove,thermistor-channel = <0>;
                 leds-gpios = <&gpio 4 0>, <&gpio 5 0>,
                         <&gpio 6 0>, <&gpio 12 0>,
                         <&gpio 13 0>, <&gpio 17 0>,
@@ -24,7 +27,7 @@
         };
     };
 
-    /* Fragment 1: Enable RP1 I2C1 (GPIO2=SDA, GPIO3=SCL) for user I2C bus */
+    /* Fragment 1: Enable RP1 I2C1 (GPIO2=SDA, GPIO3=SCL) for user I2C bus. */
     fragment@1 {
         target = <&i2c_arm>;
         __overlay__ {

@@ -49,6 +49,7 @@ Dashboard web pour tester les composants du kit **Freenove FNK0054** sur Raspber
 | LED Matrix 8x8       | `led_matrix.py`      | Matrice 74HC595                |
 | I2C Scanner          | `i2c_scan.py`        | Bus I2C (détection périph.)    |
 | ADC                  | `adc_read.py`        | ADS7830 8-ch (potentiomètre)   |
+| Thermistance         | `thermistor_read.py` | NTC + ADS7830 (thermomètre)    |
 | DHT11                | `dht_read.py`        | Température + humidité         |
 | Ultrason             | `ultrasonic.py`      | HC-SR04 (distance cm)          |
 | Buzzer               | `buzzer.py`          | Buzzer actif/passif            |
@@ -75,6 +76,7 @@ frontend-backend-freenove/
     │   ├── led_matrix.py
     │   ├── i2c_scan.py
     │   ├── adc_read.py
+    │   ├── thermistor_read.py
     │   ├── dht_read.py
     │   ├── ultrasonic.py
     │   ├── buzzer.py

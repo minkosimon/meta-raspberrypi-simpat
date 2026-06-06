@@ -1364,10 +1364,35 @@ function UltrasonicPanel({ ws, disabled }) {
   const [output, setOutput] = useState("");
   const [polling, setPolling] = useState(false);
   const timerRef = useRef(null);
+  const maxDistanceCm = Number(data?.distance_max_cm) || 200;
+  const distanceCm = Number(data?.distance_cm);
+  const derivedEchoUs = Number.isFinite(distanceCm)
+    ? (distanceCm * 2 * 1000000) / 34300
+    : null;
+  const echoTimeUs = Number(data?.echo_time_us) || derivedEchoUs || 0;
+  const triggerPulseUs = Number(data?.trigger_pulse_us) || 10;
+  const echoWidthPct = Math.max(
+    6,
+    Math.min(
+      100,
+      (echoTimeUs / ((maxDistanceCm * 2 * 1000000) / 34300)) * 100 || 0,
+    ),
+  );
+  const hasEcho = Number.isFinite(distanceCm) && !data?.error;
+  const waveformActive = polling || hasEcho || Boolean(data?.error);
+  const statusText = data?.error
+    ? data.error === "timeout_waiting_for_echo_start"
+      ? "Aucun echo detecte"
+      : data.error === "echo_line_stuck_high"
+        ? "La ligne Echo reste a l'etat haut"
+        : "Echo recu mais non relache"
+    : hasEcho
+      ? `Echo mesure: ${echoTimeUs.toFixed(2)} us`
+      : "Mesure en attente";
   const read = async () => {
     const res = await ws.send("ultrasonic_read", {
-      trig_pin: 20,
-      echo_pin: 21,
+      trig_pin: 14,
+      echo_pin: 15,
     });
     setOutput(JSON.stringify(res.data, null, 2));
     if (res.status === "ok" && res.data.stdout)
@@ -1386,13 +1411,90 @@ function UltrasonicPanel({ ws, disabled }) {
   };
   useEffect(() => () => clearInterval(timerRef.current), []);
   return (
-    <Card icon="📏" title="Ultrason HC-SR04" badge="GPIO20/21">
-      {data && (
+    <Card icon="📏" title="Ultrason HC-SR04" badge="GPIO14/15">
+      {hasEcho && (
         <div className="sensor-value">
-          {data.distance_cm}
+          {distanceCm.toFixed(2)}
           <span className="sensor-unit"> cm</span>
         </div>
       )}
+      <div
+        style={{
+          marginBottom: 12,
+          padding: "12px 14px",
+          borderRadius: 12,
+          border: "1px solid var(--border)",
+          background:
+            "linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.7))",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "72px 1fr auto",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 10,
+          }}
+        >
+          <strong style={{ fontSize: ".8rem", color: "var(--text-dim)" }}>
+            Trigger
+          </strong>
+          <div
+            className={`ultra-wave ultra-wave-trigger${waveformActive ? " active" : ""}`}
+          >
+            <div className="ultra-wave-baseline" />
+            <div className="ultra-wave-scan" />
+            <div className="ultra-wave-pulse ultra-wave-pulse-trigger" />
+          </div>
+          <span style={{ fontSize: ".78rem", color: "var(--text-dim)" }}>
+            {triggerPulseUs} us
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "72px 1fr auto",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <strong style={{ fontSize: ".8rem", color: "var(--text-dim)" }}>
+            Echo
+          </strong>
+          <div
+            className={`ultra-wave ultra-wave-echo${waveformActive ? " active" : ""}`}
+          >
+            <div className="ultra-wave-baseline" />
+            <div className="ultra-wave-scan" />
+            {hasEcho && (
+              <div
+                className="ultra-wave-pulse ultra-wave-pulse-echo"
+                style={{ width: `${echoWidthPct}%` }}
+              />
+            )}
+          </div>
+          <span style={{ fontSize: ".78rem", color: "var(--text-dim)" }}>
+            {hasEcho ? `${echoTimeUs.toFixed(2)} us` : "--"}
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          marginBottom: 12,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid var(--border)",
+          background: "rgba(51, 65, 85, 0.34)",
+          fontSize: ".8rem",
+          lineHeight: 1.55,
+          color: data?.error ? "#fca5a5" : "var(--text-dim)",
+        }}
+      >
+        {statusText}
+        <br />
+        Distance = temps d'echo x vitesse du son / 2
+      </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn" onClick={read} disabled={disabled}>
           Mesurer
@@ -1764,7 +1866,9 @@ function IrMotionPanel({ ws, disabled }) {
     } catch (err) {
       setSensorData(null);
       setDetected(false);
-      setLastError(err instanceof Error ? err.message : "Lecture PIR indisponible");
+      setLastError(
+        err instanceof Error ? err.message : "Lecture PIR indisponible",
+      );
     } finally {
       readingRef.current = false;
     }
@@ -1902,30 +2006,133 @@ function PhotoresistorPanel({ ws, disabled }) {
 function ThermistorPanel({ ws, disabled }) {
   const [data, setData] = useState(null);
   const [output, setOutput] = useState("");
+  const [polling, setPolling] = useState(false);
+  const [intervalMs, setIntervalMs] = useState(1000);
+  const [lastReadAt, setLastReadAt] = useState(null);
+  const timerRef = useRef(null);
+  const pendingRef = useRef(false);
   const read = async () => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     const res = await ws.send("thermistor_read");
     setOutput(JSON.stringify(res.data, null, 2));
     if (res.status === "ok" && res.data.stdout)
       try {
         setData(JSON.parse(res.data.stdout));
+        setLastReadAt(new Date());
       } catch {}
+    pendingRef.current = false;
   };
+  const stopPolling = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    setPolling(false);
+  };
+  const startPolling = () => {
+    read();
+    timerRef.current = setInterval(read, intervalMs);
+    setPolling(true);
+  };
+  const togglePolling = () => {
+    if (polling) stopPolling();
+    else startPolling();
+  };
+  useEffect(() => {
+    if (!polling) return;
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(read, intervalMs);
+    return () => clearInterval(timerRef.current);
+  }, [intervalMs, polling]);
+  useEffect(() => () => clearInterval(timerRef.current), []);
+  const statusLabel = polling
+    ? `Auto toutes les ${intervalMs >= 1000 ? `${intervalMs / 1000} s` : `${intervalMs} ms`}`
+    : "Lecture manuelle";
   return (
     <Card icon="🌡️" title="Thermistance" badge="ADC A0">
       {data && (
-        <div className="sensor-value" style={{ color: "#ef4444" }}>
-          {data.temperature_c}
-          <span className="sensor-unit"> °C</span>
-        </div>
+        <>
+          <div className="sensor-value" style={{ color: "#ef4444" }}>
+            {data.temperature_c}
+            <span className="sensor-unit"> °C</span>
+          </div>
+          <div className="field-row" style={{ marginBottom: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Mode</label>
+              <input value={statusLabel} readOnly />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Bus I2C</label>
+              <input value={`i2c-${data.bus ?? "-"}`} readOnly />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Adresse ADS7830</label>
+              <input value={data.address ?? "-"} readOnly />
+            </div>
+          </div>
+          <div className="field-row" style={{ marginBottom: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Tension</label>
+              <input value={`${data.voltage_v ?? "-"} V`} readOnly />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Resistance NTC</label>
+              <input value={`${data.resistance_kohm ?? "-"} kOhm`} readOnly />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>ADC brut</label>
+              <input value={data.raw ?? "-"} readOnly />
+            </div>
+          </div>
+          <div className="field-row" style={{ marginBottom: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Derniere lecture</label>
+              <input
+                value={lastReadAt ? lastReadAt.toLocaleTimeString() : "-"}
+                readOnly
+              />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Formule</label>
+              <input
+                value={data.formula ?? "freenove_ch9_thermistor"}
+                readOnly
+              />
+            </div>
+          </div>
+        </>
       )}
-      <button
-        className="btn"
-        onClick={read}
-        disabled={disabled}
-        style={{ width: "100%" }}
-      >
-        Lire temperature
-      </button>
+      <div className="field-row">
+        <button
+          className="btn"
+          onClick={read}
+          disabled={disabled}
+          style={{ flex: 1 }}
+        >
+          Lire temperature
+        </button>
+        <button
+          className={`btn ${polling ? "success" : "secondary"}`}
+          onClick={togglePolling}
+          disabled={disabled}
+          style={{ flex: 1 }}
+        >
+          {polling ? "Arreter rafraichissement" : "Activer rafraichissement"}
+        </button>
+      </div>
+      <div className="field" style={{ marginTop: 10 }}>
+        <label>Intervalle de rafraichissement</label>
+        <select
+          value={intervalMs}
+          onChange={(e) => setIntervalMs(Number(e.target.value))}
+          disabled={disabled}
+        >
+          <option value={250}>250 ms</option>
+          <option value={500}>500 ms</option>
+          <option value={1000}>1 s</option>
+          <option value={2000}>2 s</option>
+          <option value={5000}>5 s</option>
+        </select>
+      </div>
       {output && <div className="output">{output}</div>}
     </Card>
   );
@@ -3178,7 +3385,7 @@ const NAV_ITEMS = [
     id: "ultrasonic",
     icon: "📏",
     label: "Ultrason HC-SR04",
-    badge: "GPIO20/21",
+    badge: "GPIO14/15",
   },
   { id: "mpu6050", icon: "🎯", label: "MPU6050", badge: "I2C" },
   { id: "ir_motion", icon: "👁️", label: "Capteur PIR", badge: "GPIO24" },

@@ -550,6 +550,11 @@ async def dispatch(action: str, params: dict) -> dict:
         channel = int(params.get("channel", 0))
         return await _run_board_script("adc_read.py", str(channel))
 
+    if action == "thermistor_read":
+        channel = int(params.get("channel", 0))
+        bus = int(params.get("bus", config.I2C_BUS))
+        return await _run_board_script("thermistor_read.py", f"{channel} {bus}")
+
     # --- DHT11 ---
     if action == "dht_read":
         pin = int(params.get("pin", 17))
@@ -587,8 +592,8 @@ async def dispatch(action: str, params: dict) -> dict:
 
     # --- Ultrasonic HC-SR04 ---
     if action == "ultrasonic_read":
-        trig = int(params.get("trig_pin", 20))
-        echo = int(params.get("echo_pin", 21))
+        trig = int(params.get("trig_pin", 14))
+        echo = int(params.get("echo_pin", 15))
         return await _run_board_script("ultrasonic.py", f"{trig} {echo}")
 
     # --- MPU6050 ---

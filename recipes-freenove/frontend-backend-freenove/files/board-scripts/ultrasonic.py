@@ -2,7 +2,7 @@
 """HC-SR04 ultrasonic distance sensor (FNK0054) via sysfs GPIO.
 
 Usage: ultrasonic.py [trig_pin] [echo_pin]
-Defaults: trig=20, echo=21
+Defaults: trig=14, echo=15
 Output: JSON {"distance_cm": float}
 
 On this Raspberry Pi 5 image, RPi.GPIO fails with "Mmap of GPIO registers
@@ -23,6 +23,8 @@ SPEED_OF_SOUND_CM_S = 34300
 TRIGGER_PULSE_SECONDS = 0.00001
 SETTLE_SECONDS = 0.05
 EDGE_TIMEOUT_SECONDS = 0.1
+MAX_DISTANCE_CM = 200
+MIN_DISTANCE_CM = 2
 
 
 def _rp1_gpio_base() -> int:
@@ -96,6 +98,19 @@ def measure_distance(trig: int, echo: int) -> dict:
         time.sleep(SETTLE_SECONDS)
 
         echo_fd = _open_value_fd(echo_global)
+        idle_echo_level = _read_value_fd(echo_fd)
+        if idle_echo_level == 1:
+            return {
+                "error": "echo_line_stuck_high",
+                "hint": "Verifier le cablage Echo, le niveau logique et l'alimentation du HC-SR04.",
+                "echo_idle_level": idle_echo_level,
+                "trig_pin": trig,
+                "echo_pin": echo,
+                "trigger_pulse_us": int(TRIGGER_PULSE_SECONDS * 1_000_000),
+                "distance_min_cm": MIN_DISTANCE_CM,
+                "distance_max_cm": MAX_DISTANCE_CM,
+                "backend": "sysfs-gpio",
+            }
 
         _write_value(trig_global, 1)
         time.sleep(TRIGGER_PULSE_SECONDS)
@@ -108,7 +123,16 @@ def measure_distance(trig: int, echo: int) -> dict:
                 start_ns = time.monotonic_ns()
                 break
         if not start_ns:
-            return {"error": "timeout_waiting_for_echo_start", "trig_pin": trig, "echo_pin": echo}
+            return {
+                "error": "timeout_waiting_for_echo_start",
+                "echo_idle_level": idle_echo_level,
+                "trig_pin": trig,
+                "echo_pin": echo,
+                "trigger_pulse_us": int(TRIGGER_PULSE_SECONDS * 1_000_000),
+                "distance_min_cm": MIN_DISTANCE_CM,
+                "distance_max_cm": MAX_DISTANCE_CM,
+                "backend": "sysfs-gpio",
+            }
 
         end_ns = 0
         deadline = time.monotonic() + EDGE_TIMEOUT_SECONDS
@@ -117,12 +141,25 @@ def measure_distance(trig: int, echo: int) -> dict:
                 end_ns = time.monotonic_ns()
                 break
         if not end_ns:
-            return {"error": "timeout_waiting_for_echo_end", "trig_pin": trig, "echo_pin": echo}
+            return {
+                "error": "timeout_waiting_for_echo_end",
+                "echo_idle_level": idle_echo_level,
+                "trig_pin": trig,
+                "echo_pin": echo,
+                "trigger_pulse_us": int(TRIGGER_PULSE_SECONDS * 1_000_000),
+                "distance_min_cm": MIN_DISTANCE_CM,
+                "distance_max_cm": MAX_DISTANCE_CM,
+                "backend": "sysfs-gpio",
+            }
 
         elapsed_seconds = (end_ns - start_ns) / 1_000_000_000
         distance_cm = round((elapsed_seconds * SPEED_OF_SOUND_CM_S) / 2, 2)
         return {
             "distance_cm": distance_cm,
+            "echo_time_us": round(elapsed_seconds * 1_000_000, 2),
+            "trigger_pulse_us": int(TRIGGER_PULSE_SECONDS * 1_000_000),
+            "distance_min_cm": MIN_DISTANCE_CM,
+            "distance_max_cm": MAX_DISTANCE_CM,
             "trig_pin": trig,
             "echo_pin": echo,
             "backend": "sysfs-gpio",
@@ -136,6 +173,6 @@ def measure_distance(trig: int, echo: int) -> dict:
 
 
 if __name__ == "__main__":
-    trig = int(sys.argv[1]) if len(sys.argv) > 1 else 20
-    echo = int(sys.argv[2]) if len(sys.argv) > 2 else 21
+    trig = int(sys.argv[1]) if len(sys.argv) > 1 else 14
+    echo = int(sys.argv[2]) if len(sys.argv) > 2 else 15
     print(json.dumps(measure_distance(trig, echo)))

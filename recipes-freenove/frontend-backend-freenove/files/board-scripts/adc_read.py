@@ -10,10 +10,31 @@ import fcntl
 import json
 import os
 import sys
+from pathlib import Path
 
 ADS7830_ADDRS = (0x48, 0x4B)
-I2C_BUS = 1
 I2C_SLAVE = 0x0703
+
+
+def _read_dt_u32(path: str) -> int | None:
+    dt_path = Path(path)
+    try:
+        data = dt_path.read_bytes()
+    except OSError:
+        return None
+    if len(data) < 4:
+        return None
+    return int.from_bytes(data[:4], byteorder="big", signed=False)
+
+
+def _resolve_i2c_bus() -> int:
+    dt_bus = _read_dt_u32("/proc/device-tree/freenove_board/freenove,i2c-bus")
+    if dt_bus is not None:
+        return dt_bus
+    return int(os.environ.get("FNK_I2C_BUS", "1"))
+
+
+I2C_BUS = _resolve_i2c_bus()
 
 
 def _open_i2c_device(bus_number: int, address: int) -> int:
